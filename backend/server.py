@@ -1,15 +1,19 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import bcrypt
+import base64
+from io import BytesIO
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,52 +23,590 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# JWT Config
+JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'fallback_secret_key')
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 72
+
+# Create the main app
+app = FastAPI(title="Car Service Tracker API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+security = HTTPBearer()
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+# ==================== MODELS ====================
+
+# Auth Models
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    email: str
+    name: str
+    created_at: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+# Vehicle Models
+class VehicleCreate(BaseModel):
+    make: str
+    model: str
+    year: int
+    license_plate: Optional[str] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
+    notes: Optional[str] = None
+
+class VehicleUpdate(BaseModel):
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    license_plate: Optional[str] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
+    notes: Optional[str] = None
+
+class VehicleResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    make: str
+    model: str
+    year: int
+    license_plate: Optional[str] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
+    notes: Optional[str] = None
+    current_odometer: int = 0
+    created_at: str
+
+# Service Record Models
+class ServiceRecordCreate(BaseModel):
+    vehicle_id: str
+    service_type: str
+    date: str
+    price: float
+    location: Optional[str] = None
+    odometer: int
+    notes: Optional[str] = None
+    provider: Optional[str] = None
+
+class ServiceRecordUpdate(BaseModel):
+    service_type: Optional[str] = None
+    date: Optional[str] = None
+    price: Optional[float] = None
+    location: Optional[str] = None
+    odometer: Optional[int] = None
+    notes: Optional[str] = None
+    provider: Optional[str] = None
+
+class ServiceRecordResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    vehicle_id: str
+    service_type: str
+    date: str
+    price: float
+    location: Optional[str] = None
+    odometer: int
+    notes: Optional[str] = None
+    provider: Optional[str] = None
+    image_base64: Optional[str] = None
+    created_at: str
+
+# Reminder Models
+class ReminderCreate(BaseModel):
+    vehicle_id: str
+    service_type: str
+    due_date: str
+    due_odometer: Optional[int] = None
+    notes: Optional[str] = None
+
+class ReminderUpdate(BaseModel):
+    service_type: Optional[str] = None
+    due_date: Optional[str] = None
+    due_odometer: Optional[int] = None
+    notes: Optional[str] = None
+    completed: Optional[bool] = None
+
+class ReminderResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    vehicle_id: str
+    service_type: str
+    due_date: str
+    due_odometer: Optional[int] = None
+    notes: Optional[str] = None
+    completed: bool = False
+    created_at: str
+
+# OCR Response Model
+class OCRExtractedData(BaseModel):
+    service_type: Optional[str] = None
+    date: Optional[str] = None
+    price: Optional[float] = None
+    location: Optional[str] = None
+    odometer: Optional[int] = None
+    provider: Optional[str] = None
+    confidence: str = "low"
+    raw_text: Optional[str] = None
+
+# ==================== AUTH HELPERS ====================
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def create_token(user_id: str, email: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# ==================== AUTH ENDPOINTS ====================
+
+@api_router.post("/auth/register", response_model=TokenResponse)
+async def register(user_data: UserCreate):
+    existing = await db.users.find_one({"email": user_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
     
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "email": user_data.email,
+        "password": hash_password(user_data.password),
+        "name": user_data.name,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    
+    token = create_token(user_id, user_data.email)
+    user_response = UserResponse(
+        id=user_id,
+        email=user_data.email,
+        name=user_data.name,
+        created_at=user_doc["created_at"]
+    )
+    return TokenResponse(access_token=token, user=user_response)
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(login_data: UserLogin):
+    user = await db.users.find_one({"email": login_data.email}, {"_id": 0})
+    if not user or not verify_password(login_data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token = create_token(user["id"], user["email"])
+    user_response = UserResponse(
+        id=user["id"],
+        email=user["email"],
+        name=user["name"],
+        created_at=user["created_at"]
+    )
+    return TokenResponse(access_token=token, user=user_response)
 
-# Add your routes to the router instead of directly to app
+@api_router.get("/auth/me", response_model=UserResponse)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return UserResponse(**current_user)
+
+# ==================== VEHICLE ENDPOINTS ====================
+
+@api_router.post("/vehicles", response_model=VehicleResponse)
+async def create_vehicle(vehicle_data: VehicleCreate, current_user: dict = Depends(get_current_user)):
+    vehicle_id = str(uuid.uuid4())
+    vehicle_doc = {
+        "id": vehicle_id,
+        "user_id": current_user["id"],
+        **vehicle_data.model_dump(),
+        "current_odometer": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.vehicles.insert_one(vehicle_doc)
+    return VehicleResponse(**vehicle_doc)
+
+@api_router.get("/vehicles", response_model=List[VehicleResponse])
+async def get_vehicles(current_user: dict = Depends(get_current_user)):
+    vehicles = await db.vehicles.find(
+        {"user_id": current_user["id"]}, 
+        {"_id": 0}
+    ).to_list(100)
+    return [VehicleResponse(**v) for v in vehicles]
+
+@api_router.get("/vehicles/{vehicle_id}", response_model=VehicleResponse)
+async def get_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    vehicle = await db.vehicles.find_one(
+        {"id": vehicle_id, "user_id": current_user["id"]}, 
+        {"_id": 0}
+    )
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return VehicleResponse(**vehicle)
+
+@api_router.put("/vehicles/{vehicle_id}", response_model=VehicleResponse)
+async def update_vehicle(vehicle_id: str, update_data: VehicleUpdate, current_user: dict = Depends(get_current_user)):
+    update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    result = await db.vehicles.update_one(
+        {"id": vehicle_id, "user_id": current_user["id"]},
+        {"$set": update_dict}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    return VehicleResponse(**vehicle)
+
+@api_router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.vehicles.delete_one({"id": vehicle_id, "user_id": current_user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    # Also delete related service records and reminders
+    await db.service_records.delete_many({"vehicle_id": vehicle_id})
+    await db.reminders.delete_many({"vehicle_id": vehicle_id})
+    
+    return {"message": "Vehicle deleted successfully"}
+
+# ==================== SERVICE RECORD ENDPOINTS ====================
+
+@api_router.post("/service-records", response_model=ServiceRecordResponse)
+async def create_service_record(record_data: ServiceRecordCreate, current_user: dict = Depends(get_current_user)):
+    # Verify vehicle belongs to user
+    vehicle = await db.vehicles.find_one({"id": record_data.vehicle_id, "user_id": current_user["id"]})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    record_id = str(uuid.uuid4())
+    record_doc = {
+        "id": record_id,
+        "user_id": current_user["id"],
+        **record_data.model_dump(),
+        "image_base64": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.service_records.insert_one(record_doc)
+    
+    # Update vehicle odometer if this is higher
+    if record_data.odometer > vehicle.get("current_odometer", 0):
+        await db.vehicles.update_one(
+            {"id": record_data.vehicle_id},
+            {"$set": {"current_odometer": record_data.odometer}}
+        )
+    
+    return ServiceRecordResponse(**record_doc)
+
+@api_router.get("/service-records", response_model=List[ServiceRecordResponse])
+async def get_service_records(
+    vehicle_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {"user_id": current_user["id"]}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    
+    records = await db.service_records.find(query, {"_id": 0}).sort("date", -1).to_list(500)
+    return [ServiceRecordResponse(**r) for r in records]
+
+@api_router.get("/service-records/{record_id}", response_model=ServiceRecordResponse)
+async def get_service_record(record_id: str, current_user: dict = Depends(get_current_user)):
+    record = await db.service_records.find_one(
+        {"id": record_id, "user_id": current_user["id"]}, 
+        {"_id": 0}
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Service record not found")
+    return ServiceRecordResponse(**record)
+
+@api_router.put("/service-records/{record_id}", response_model=ServiceRecordResponse)
+async def update_service_record(record_id: str, update_data: ServiceRecordUpdate, current_user: dict = Depends(get_current_user)):
+    update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    result = await db.service_records.update_one(
+        {"id": record_id, "user_id": current_user["id"]},
+        {"$set": update_dict}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Service record not found")
+    
+    record = await db.service_records.find_one({"id": record_id}, {"_id": 0})
+    return ServiceRecordResponse(**record)
+
+@api_router.delete("/service-records/{record_id}")
+async def delete_service_record(record_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.service_records.delete_one({"id": record_id, "user_id": current_user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Service record not found")
+    return {"message": "Service record deleted successfully"}
+
+# ==================== OCR ENDPOINT ====================
+
+@api_router.post("/ocr/extract", response_model=OCRExtractedData)
+async def extract_from_image(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        
+        # Read and encode the image
+        content = await file.read()
+        image_base64 = base64.b64encode(content).decode('utf-8')
+        
+        # Initialize LLM chat
+        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OCR service not configured")
+        
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"ocr-{uuid.uuid4()}",
+            system_message="""You are an expert at extracting car service information from receipts and invoices.
+Extract the following information if present:
+- Service type (e.g., oil change, tire rotation, brake service, etc.)
+- Date of service (format: YYYY-MM-DD)
+- Price/cost (as a number)
+- Location/address of service center
+- Odometer reading (in km)
+- Service provider/shop name
+
+Return ONLY a JSON object with these exact fields:
+{
+  "service_type": "string or null",
+  "date": "YYYY-MM-DD or null",
+  "price": number or null,
+  "location": "string or null",
+  "odometer": number or null,
+  "provider": "string or null",
+  "confidence": "high/medium/low",
+  "raw_text": "extracted text summary"
+}"""
+        ).with_model("openai", "gpt-5.2")
+        
+        image_content = ImageContent(image_base64=image_base64)
+        
+        user_message = UserMessage(
+            text="Please extract car service information from this receipt/invoice image. Return only the JSON object.",
+            image_contents=[image_content]
+        )
+        
+        response = await chat.send_message(user_message)
+        
+        # Parse the response
+        import json
+        import re
+        
+        # Try to extract JSON from response
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
+            return OCRExtractedData(**data)
+        else:
+            return OCRExtractedData(
+                confidence="low",
+                raw_text=response[:500] if response else "Could not extract data"
+            )
+            
+    except Exception as e:
+        logging.error(f"OCR extraction error: {str(e)}")
+        return OCRExtractedData(
+            confidence="low",
+            raw_text=f"Error processing image: {str(e)}"
+        )
+
+# ==================== REMINDER ENDPOINTS ====================
+
+@api_router.post("/reminders", response_model=ReminderResponse)
+async def create_reminder(reminder_data: ReminderCreate, current_user: dict = Depends(get_current_user)):
+    # Verify vehicle belongs to user
+    vehicle = await db.vehicles.find_one({"id": reminder_data.vehicle_id, "user_id": current_user["id"]})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    reminder_id = str(uuid.uuid4())
+    reminder_doc = {
+        "id": reminder_id,
+        "user_id": current_user["id"],
+        **reminder_data.model_dump(),
+        "completed": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.reminders.insert_one(reminder_doc)
+    return ReminderResponse(**reminder_doc)
+
+@api_router.get("/reminders", response_model=List[ReminderResponse])
+async def get_reminders(
+    vehicle_id: Optional[str] = None,
+    completed: Optional[bool] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {"user_id": current_user["id"]}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    if completed is not None:
+        query["completed"] = completed
+    
+    reminders = await db.reminders.find(query, {"_id": 0}).sort("due_date", 1).to_list(100)
+    return [ReminderResponse(**r) for r in reminders]
+
+@api_router.put("/reminders/{reminder_id}", response_model=ReminderResponse)
+async def update_reminder(reminder_id: str, update_data: ReminderUpdate, current_user: dict = Depends(get_current_user)):
+    update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    result = await db.reminders.update_one(
+        {"id": reminder_id, "user_id": current_user["id"]},
+        {"$set": update_dict}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    
+    reminder = await db.reminders.find_one({"id": reminder_id}, {"_id": 0})
+    return ReminderResponse(**reminder)
+
+@api_router.delete("/reminders/{reminder_id}")
+async def delete_reminder(reminder_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.reminders.delete_one({"id": reminder_id, "user_id": current_user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return {"message": "Reminder deleted successfully"}
+
+# ==================== EXPORT ENDPOINTS ====================
+
+@api_router.get("/export/csv")
+async def export_csv(
+    vehicle_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    import csv
+    from io import StringIO
+    from fastapi.responses import Response
+    
+    query = {"user_id": current_user["id"]}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    
+    records = await db.service_records.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+    vehicles = await db.vehicles.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(100)
+    vehicle_map = {v["id"]: f"{v['year']} {v['make']} {v['model']}" for v in vehicles}
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Vehicle", "Service Type", "Date", "Price", "Odometer (km)", "Location", "Provider", "Notes"])
+    
+    for record in records:
+        writer.writerow([
+            vehicle_map.get(record["vehicle_id"], "Unknown"),
+            record.get("service_type", ""),
+            record.get("date", ""),
+            record.get("price", 0),
+            record.get("odometer", 0),
+            record.get("location", ""),
+            record.get("provider", ""),
+            record.get("notes", "")
+        ])
+    
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=service_records.csv"}
+    )
+
+@api_router.get("/export/json")
+async def export_json(
+    vehicle_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {"user_id": current_user["id"]}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    
+    records = await db.service_records.find(query, {"_id": 0, "image_base64": 0}).sort("date", -1).to_list(1000)
+    vehicles = await db.vehicles.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(100)
+    
+    return {
+        "vehicles": vehicles,
+        "service_records": records,
+        "exported_at": datetime.now(timezone.utc).isoformat()
+    }
+
+# ==================== DASHBOARD STATS ====================
+
+@api_router.get("/stats/dashboard")
+async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+    vehicles = await db.vehicles.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(100)
+    records = await db.service_records.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(500)
+    reminders = await db.reminders.find(
+        {"user_id": current_user["id"], "completed": False}, 
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Calculate stats
+    total_spent = sum(r.get("price", 0) for r in records)
+    
+    # Get upcoming reminders (next 30 days)
+    today = datetime.now(timezone.utc).date()
+    upcoming = [r for r in reminders if r.get("due_date")]
+    
+    # Recent services (last 5)
+    recent_records = sorted(records, key=lambda x: x.get("date", ""), reverse=True)[:5]
+    
+    return {
+        "total_vehicles": len(vehicles),
+        "total_services": len(records),
+        "total_spent": round(total_spent, 2),
+        "upcoming_reminders": len(upcoming),
+        "recent_services": recent_records,
+        "vehicles": vehicles,
+        "reminders": upcoming[:5]
+    }
+
+# ==================== ROOT ENDPOINT ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+    return {"message": "Car Service Tracker API", "status": "running"}
 
 # Include the router in the main app
 app.include_router(api_router)
