@@ -9,7 +9,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { saveAs } from 'file-saver';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -44,8 +43,24 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      saveAs(new Blob([response.data], { type: 'text/csv' }), 'service_records.csv');
-      toast.success('CSV downloaded!');
+      // Create blob URL and open in new window
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      
+      // Open in new window - browser will prompt to download or display
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow) {
+        // If popup blocked, try direct download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'service_records.csv';
+        a.click();
+      }
+      
+      toast.success('CSV ready! Check your downloads or new tab.');
+      
+      // Cleanup after delay
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
     } catch (error) {
       console.error('CSV export error:', error);
       toast.error('Failed to export CSV');
@@ -63,8 +78,24 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      saveAs(new Blob([response.data], { type: 'application/pdf' }), 'service_records.pdf');
-      toast.success('PDF downloaded!');
+      // Create blob URL and open in new window
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      
+      // Open PDF in new tab - user can then save it
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow) {
+        // If popup blocked, try direct download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'service_records.pdf';
+        a.click();
+      }
+      
+      toast.success('PDF ready! Check your new tab - you can save from there.');
+      
+      // Cleanup after delay
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
     } catch (error) {
       console.error('PDF export error:', error);
       toast.error('Failed to export PDF');
