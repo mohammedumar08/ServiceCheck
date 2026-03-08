@@ -39,21 +39,23 @@ const ExportPage = () => {
     try {
       const params = selectedVehicle !== 'all' ? `?vehicle_id=${selectedVehicle}` : '';
       const response = await axios.get(`${API_URL}/export/csv${params}`, {
-        ...getAuthHeader(),
+        headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'service_records.csv');
+      link.download = 'service_records.csv';
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
       toast.success('CSV exported successfully');
     } catch (error) {
+      console.error('CSV export error:', error);
       toast.error('Failed to export CSV');
     } finally {
       setExporting(null);
@@ -65,21 +67,23 @@ const ExportPage = () => {
     try {
       const params = selectedVehicle !== 'all' ? `?vehicle_id=${selectedVehicle}` : '';
       const response = await axios.get(`${API_URL}/export/pdf${params}`, {
-        ...getAuthHeader(),
+        headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'service_records.pdf');
+      link.download = 'service_records.pdf';
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
       toast.success('PDF exported successfully');
     } catch (error) {
+      console.error('PDF export error:', error);
       toast.error('Failed to export PDF');
     } finally {
       setExporting(null);
