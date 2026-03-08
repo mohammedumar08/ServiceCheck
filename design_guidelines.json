@@ -1,0 +1,189 @@
+{
+  "project_name": "Car Service Tracker",
+  "design_identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "archetype": "The Performance Pro",
+    "core_principles": [
+      "Fusion over Imitation: Mix Automotive precision with SaaS utility",
+      "Emotion First: Reliability, Speed, and Technical Excellence",
+      "Content is King: Data is beautiful. Show, don't just tell.",
+      "Negative Space: Use it to group technical data without borders.",
+      "Contrast: High contrast for readability in all lighting conditions."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Barlow Condensed, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "installation": {
+      "google_fonts_url": "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+      "tailwind_extend": {
+        "fontFamily": {
+          "heading": ["Barlow Condensed", "sans-serif"],
+          "sans": ["Manrope", "sans-serif"],
+          "mono": ["JetBrains Mono", "monospace"]
+        }
+      }
+    },
+    "usage_rules": {
+      "headings": "Use 'font-heading' for all H1-H3. Weights: 700 or 800. Letter-spacing: 'tracking-tight'.",
+      "body": "Use 'font-sans' for all paragraphs. Leading: 'leading-relaxed'.",
+      "data": "Use 'font-mono' for VINs, License Plates, Odometer readings, and Prices."
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#FF3B30",
+        "foreground": "#FFFFFF",
+        "description": "Electric Blaze - High visibility red for Actions and Alerts"
+      },
+      "secondary": {
+        "DEFAULT": "#1E293B",
+        "foreground": "#FFFFFF",
+        "description": "Slate 800 - Technical Secondary"
+      },
+      "background": {
+        "light": "#F8FAFC",
+        "dark": "#020617",
+        "description": "Slate 50 (Light) / Slate 950 (Dark)"
+      },
+      "surface": {
+        "light": "#FFFFFF",
+        "dark": "#0F172A",
+        "description": "White (Light) / Slate 900 (Dark)"
+      },
+      "accent": {
+        "DEFAULT": "#3B82F6",
+        "foreground": "#FFFFFF",
+        "description": "Volt Blue - For information and trust"
+      },
+      "muted": {
+        "light": "#F1F5F9",
+        "dark": "#1E293B",
+        "description": "Slate 100 / Slate 800"
+      },
+      "border": {
+        "light": "#E2E8F0",
+        "dark": "#334155",
+        "description": "Slate 200 / Slate 700"
+      }
+    },
+    "gradients": {
+      "primary_glow": "bg-gradient-to-r from-red-600 to-red-500",
+      "dark_surface": "bg-gradient-to-b from-slate-900 to-slate-950"
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid border-border. Use 'rounded-none' or 'rounded-sm' for a technical, machined look. Avoid large rounded corners.",
+    "shadows": {
+      "card": "shadow-[0_2px_4px_rgba(0,0,0,0.1)]",
+      "hover": "shadow-[0_4px_12px_rgba(255,59,48,0.15)]",
+      "glow": "0 0 10px rgba(255, 59, 48, 0.5)"
+    },
+    "textures": {
+      "grid_pattern": "bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]",
+      "noise": "opacity-5 mix-blend-overlay pointer-events-none fixed inset-0 z-50 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"
+    }
+  },
+  "layout_strategies": {
+    "landing_page": {
+      "mode": "MODE A: TETRIS GRID",
+      "grid_cols": "grid-cols-1 md:grid-cols-12",
+      "gap": "gap-4 md:gap-8",
+      "structure": "Asymmetric layout. Hero section must use large typography (text-7xl+) and 'grid-pattern' background."
+    },
+    "dashboard": {
+      "mode": "MODE B: HIGH DENSITY",
+      "grid_cols": "grid-cols-1 md:grid-cols-4",
+      "gap": "gap-4",
+      "widgets": {
+        "vehicle_card": "col-span-4 md:col-span-2 row-span-2",
+        "stats": "col-span-2 md:col-span-1",
+        "upcoming_service": "col-span-4 md:col-span-1 row-span-2"
+      }
+    },
+    "forms": {
+      "alignment": "Left aligned labels. Inputs full width.",
+      "spacing": "space-y-6"
+    }
+  },
+  "components": {
+    "button": {
+      "base": "rounded-sm font-heading font-bold uppercase tracking-wider transition-all duration-200",
+      "primary": "bg-primary text-primary-foreground hover:bg-red-600 shadow-lg hover:shadow-red-500/20",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-slate-700",
+      "outline": "border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-foreground"
+    },
+    "card": {
+      "base": "rounded-sm border border-border bg-card text-card-foreground shadow-sm relative overflow-hidden",
+      "header": "p-6 border-b border-border/50 bg-slate-50/50 dark:bg-slate-900/50",
+      "content": "p-6"
+    },
+    "input": {
+      "base": "rounded-sm border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary font-sans h-11"
+    },
+    "badge": {
+      "base": "rounded-sm px-2.5 py-0.5 text-xs font-bold font-mono uppercase tracking-wider",
+      "success": "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800",
+      "warning": "bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800",
+      "error": "bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-800"
+    }
+  },
+  "assets": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1758411897888-3ca658535fdf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBsdXh1cnklMjBjYXIlMjBpbnRlcmlvciUyMGRhc2hib2FyZHxlbnwwfHx8fDE3NzMwMDIzODB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "High-end car dashboard interior, dark mood, technical."
+      },
+      {
+        "category": "service_action",
+        "url": "https://images.unsplash.com/photo-1708745427274-d5de5122fd57?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxtZWNoYW5pYyUyMHdvcmtpbmclMjBvbiUyMGNhciUyMGVuZ2luZSUyMGRldGFpbHxlbnwwfHx8fDE3NzMwMDIzODB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Mechanic working on engine, detail shot."
+      },
+      {
+        "category": "service_detail",
+        "url": "https://images.unsplash.com/photo-1636761358954-cebc0e5dfebb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHw0fHxtZWNoYW5pYyUyMHdvcmtpbmclMjBvbiUyMGNhciUyMGVuZ2luZSUyMGRldGFpbHxlbnwwfHx8fDE3NzMwMDIzODB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Close up of tools and motorcycle/car parts."
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px (Light) or 2px (Regular). Color: Inherit."
+    }
+  },
+  "animation": {
+    "libraries": [
+      "framer-motion"
+    ],
+    "patterns": {
+      "hover_card": "whileHover={{ y: -4, boxShadow: '0 10px 30px -10px rgba(0,0,0,0.3)' }} transition={{ duration: 0.2 }}",
+      "page_transition": "initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3, ease: 'easeOut' }}",
+      "list_stagger": {
+        "container": "variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }} initial='hidden' animate='show'",
+        "item": "variants={{ hidden: { opacity: 0, x: -20 }, show: { opacity: 1, x: 0 } }}"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALLATION: Run 'yarn add framer-motion' immediately.",
+    "THEME SETUP: Implement a Theme Toggle (Dark/Light). Default to System. Use the provided color tokens in tailwind.config.js.",
+    "COMPONENT OVERRIDES: Customize Shadcn components in 'components/ui' to match the 'rounded-sm' and 'border-slate-200/slate-700' aesthetic.",
+    "FONTS: Import Google Fonts in 'index.css' or 'App.css'. Configure Tailwind to use them.",
+    "DATA-TESTID: Add 'data-testid' to ALL interactive elements (buttons, inputs, links). Format: 'page-element-action' (e.g., 'login-email-input').",
+    "LAYOUT: Use the 'Tetris Grid' for the Landing Page and 'Bento Grid' for the Dashboard.",
+    "OCR FEATURE: For the Photo Upload with OCR, create a dedicated 'Scanner' interface with a camera viewfinder overlay style.",
+    "NOTIFICATIONS: Use 'sonner' for all toast notifications. Style them to match the theme (black/white/red).",
+    "GRAPHS: Use 'recharts' for mileage/cost tracking. Style the lines/bars with the primary color (#FF3B30) and gradients."
+  ],
+  "universal_guidelines": [
+    "AVOID AI SLOP: No generic gradients, no centered text everywhere, no 'Inter' font dominance.",
+    "INTERACTION IS KEY: Every button must click, every card must hover. Static UI is broken UI.",
+    "DENSITY: Dashboards are tools. Don't waste space with 100px margins between data points. Keep it compact but legible.",
+    "ACCESSIBILITY: Ensure text contrast ratio > 4.5:1. Use 'text-slate-500' only for non-critical labels.",
+    "EMPTY STATES: Never leave a list empty. Show a 'No vehicles found' graphic (ASCII art or SVG) and a clear CTA."
+  ]
+}
