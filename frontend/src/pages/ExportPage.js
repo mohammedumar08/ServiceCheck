@@ -9,6 +9,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { saveAs } from 'file-saver';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -43,17 +44,8 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'service_records.csv';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('CSV exported successfully');
+      saveAs(new Blob([response.data], { type: 'text/csv' }), 'service_records.csv');
+      toast.success('CSV downloaded!');
     } catch (error) {
       console.error('CSV export error:', error);
       toast.error('Failed to export CSV');
@@ -71,17 +63,8 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'service_records.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('PDF exported successfully');
+      saveAs(new Blob([response.data], { type: 'application/pdf' }), 'service_records.pdf');
+      toast.success('PDF downloaded!');
     } catch (error) {
       console.error('PDF export error:', error);
       toast.error('Failed to export PDF');
