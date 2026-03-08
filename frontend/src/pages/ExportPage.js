@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Download, FileText, FileSpreadsheet, Loader2, Car, Check } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Loader2, Car, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -60,26 +60,27 @@ const ExportPage = () => {
     }
   };
 
-  const handleExportJSON = async () => {
-    setExporting('json');
+  const handleExportPDF = async () => {
+    setExporting('pdf');
     try {
       const params = selectedVehicle !== 'all' ? `?vehicle_id=${selectedVehicle}` : '';
-      const response = await axios.get(`${API_URL}/export/json${params}`, getAuthHeader());
+      const response = await axios.get(`${API_URL}/export/pdf${params}`, {
+        ...getAuthHeader(),
+        responseType: 'blob'
+      });
       
-      const dataStr = JSON.stringify(response.data, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'service_records.json');
+      link.setAttribute('download', 'service_records.pdf');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
       
-      toast.success('JSON exported successfully');
+      toast.success('PDF exported successfully');
     } catch (error) {
-      toast.error('Failed to export JSON');
+      toast.error('Failed to export PDF');
     } finally {
       setExporting(null);
     }
@@ -204,41 +205,41 @@ const ExportPage = () => {
             <Card className="rounded-sm border-border hover:border-primary/50 transition-colors h-full">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-sm bg-blue-500/10">
-                    <FileText className="h-6 w-6 text-blue-500" />
+                  <div className="p-3 rounded-sm bg-red-500/10">
+                    <FileText className="h-6 w-6 text-red-500" />
                   </div>
                   <div>
-                    <CardTitle className="font-heading font-bold text-lg">JSON Export</CardTitle>
-                    <CardDescription>Complete data backup</CardDescription>
+                    <CardTitle className="font-heading font-bold text-lg">PDF Export</CardTitle>
+                    <CardDescription>Formatted report document</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Export all your data in JSON format. Includes vehicles and service records with all metadata.
+                  Generate a professional PDF report of your service history. Perfect for printing or sharing.
                 </p>
                 <ul className="text-sm space-y-2">
                   <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-blue-500" />
-                    Complete data backup
+                    <Check className="h-4 w-4 text-red-500" />
+                    Professional formatted report
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-blue-500" />
-                    Includes vehicle information
+                    <Check className="h-4 w-4 text-red-500" />
+                    Ready to print or share
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-blue-500" />
-                    Machine-readable format
+                    <Check className="h-4 w-4 text-red-500" />
+                    Includes summary statistics
                   </li>
                 </ul>
                 <Button
-                  onClick={handleExportJSON}
+                  onClick={handleExportPDF}
                   variant="outline"
                   className="w-full rounded-sm font-heading font-bold uppercase tracking-wider"
                   disabled={exporting !== null}
-                  data-testid="export-json-btn"
+                  data-testid="export-pdf-btn"
                 >
-                  {exporting === 'json' ? (
+                  {exporting === 'pdf' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Exporting...
@@ -246,7 +247,7 @@ const ExportPage = () => {
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
-                      Download JSON
+                      Download PDF
                     </>
                   )}
                 </Button>

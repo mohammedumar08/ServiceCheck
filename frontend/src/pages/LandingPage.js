@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Car, Wrench, Bell, FileText, ChevronRight, Shield, Camera } from 'lucide-react';
+import { Car, Wrench, Bell, FileText, ChevronRight, Camera } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 
@@ -86,11 +86,7 @@ const LandingPage = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-primary/10 text-primary text-sm font-mono mb-6">
-                <Shield className="h-4 w-4" />
-                <span>Trusted by 10,000+ car owners</span>
-              </div>
-              <h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-7xl tracking-tight leading-none mb-6">
+<h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-7xl tracking-tight leading-none mb-6">
                 Your Vehicle's<br />
                 <span className="text-primary">Service History</span><br />
                 In One Place

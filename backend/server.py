@@ -553,23 +553,93 @@ async def export_csv(
         headers={"Content-Disposition": "attachment; filename=service_records.csv"}
     )
 
-@api_router.get("/export/json")
-async def export_json(
+@api_router.get("/export/pdf")
+async def export_pdf(
     vehicle_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    from io import BytesIO
+    from fastapi.responses import Response
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    
     query = {"user_id": current_user["id"]}
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
     
-    records = await db.service_records.find(query, {"_id": 0, "image_base64": 0}).sort("date", -1).to_list(1000)
+    records = await db.service_records.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
     vehicles = await db.vehicles.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(100)
+    vehicle_map = {v["id"]: f"{v['year']} {v['make']} {v['model']}" for v in vehicles}
     
-    return {
-        "vehicles": vehicles,
-        "service_records": records,
-        "exported_at": datetime.now(timezone.utc).isoformat()
-    }
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        textColor=colors.HexColor('#1E293B')
+    )
+    elements.append(Paragraph("Service Records Report", title_style))
+    elements.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # Summary
+    total_spent = sum(r.get("price", 0) for r in records)
+    elements.append(Paragraph(f"<b>Total Records:</b> {len(records)}", styles['Normal']))
+    elements.append(Paragraph(f"<b>Total Spent:</b> ${total_spent:,.2f}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    if records:
+        # Table data
+        data = [["Vehicle", "Service", "Date", "Price", "Odometer"]]
+        for record in records:
+            data.append([
+                vehicle_map.get(record["vehicle_id"], "Unknown")[:20],
+                record.get("service_type", "")[:20],
+                record.get("date", ""),
+                f"${record.get('price', 0):,.2f}",
+                f"{record.get('odometer', 0):,} km"
+            ])
+        
+        # Create table
+        table = Table(data, colWidths=[1.5*inch, 1.3*inch, 1*inch, 0.9*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor('#1E293B')),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F1F5F9')]),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ]))
+        elements.append(table)
+    else:
+        elements.append(Paragraph("No service records found.", styles['Normal']))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=service_records.pdf"}
+    )
 
 # ==================== DASHBOARD STATS ====================
 
