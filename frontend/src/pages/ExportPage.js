@@ -43,24 +43,23 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      // Create blob URL and open in new window
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
+      // Direct download using anchor element
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'service_records.csv';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
       
-      // Open in new window - browser will prompt to download or display
-      const newWindow = window.open(url, '_blank');
-      if (!newWindow) {
-        // If popup blocked, try direct download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'service_records.csv';
-        a.click();
-      }
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 150);
       
-      toast.success('CSV ready! Check your downloads or new tab.');
-      
-      // Cleanup after delay
-      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+      toast.success('CSV download started!');
     } catch (error) {
       console.error('CSV export error:', error);
       toast.error('Failed to export CSV');
@@ -78,24 +77,23 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      // Create blob URL and open in new window
+      // Direct download using anchor element
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'service_records.pdf';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
       
-      // Open PDF in new tab - user can then save it
-      const newWindow = window.open(url, '_blank');
-      if (!newWindow) {
-        // If popup blocked, try direct download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'service_records.pdf';
-        a.click();
-      }
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 150);
       
-      toast.success('PDF ready! Check your new tab - you can save from there.');
-      
-      // Cleanup after delay
-      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+      toast.success('PDF download started!');
     } catch (error) {
       console.error('PDF export error:', error);
       toast.error('Failed to export PDF');
