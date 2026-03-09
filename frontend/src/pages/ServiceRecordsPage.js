@@ -54,6 +54,9 @@ const ServiceRecordsPage = () => {
     provider: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [extractedServices, setExtractedServices] = useState([]);
+  const [showExtractedDialog, setShowExtractedDialog] = useState(false);
+  const [extractedMeta, setExtractedMeta] = useState({});
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { getAuthHeader, token } = useAuth();
@@ -133,6 +136,7 @@ const ServiceRecordsPage = () => {
     }
 
     setOcrLoading(true);
+    setDialogOpen(false); // Close add dialog
     const formDataObj = new FormData();
     formDataObj.append('file', file);
 
@@ -146,27 +150,51 @@ const ServiceRecordsPage = () => {
 
       const data = response.data;
       
-      if (data.confidence === 'low' && !data.service_type && !data.price) {
-        toast.warning('Could not extract much data. Please fill in manually.');
-      } else {
-        toast.success('Data extracted successfully!');
+      if (data.confidence === 'low' && (!data.services || data.services.length === 0)) {
+        toast.warning('Could not extract services. Please add manually.');
+        setDialogOpen(true);
+        return;
       }
-
-      setFormData(prev => ({
-        ...prev,
-        service_type: data.service_type || prev.service_type,
-        date: data.date || prev.date,
-        price: data.price?.toString() || prev.price,
-        location: data.location || prev.location,
-        odometer: data.odometer?.toString() || prev.odometer,
-        provider: data.provider || prev.provider
-      }));
-
-      if (data.date) {
-        setDate(new Date(data.date));
+      
+      // Check if multiple services extracted
+      if (data.services && data.services.length > 0) {
+        // Map service types to valid dropdown options
+        const mappedServices = data.services.map(svc => {
+          const matchedType = SERVICE_TYPES.find(t => 
+            t.toLowerCase() === svc.service_type.toLowerCase() ||
+            svc.service_type.toLowerCase().includes(t.toLowerCase()) ||
+            t.toLowerCase().includes(svc.service_type.toLowerCase().split(' ')[0])
+          ) || 'Other';
+          
+          return {
+            ...svc,
+            service_type: matchedType,
+            original_type: svc.service_type,
+            selected: svc.price > 0 // Auto-select services with price > 0
+          };
+        });
+        
+        setExtractedServices(mappedServices);
+        setExtractedMeta({
+          date: data.date,
+          location: data.location,
+          odometer: data.odometer,
+          provider: data.provider
+        });
+        
+        if (data.date) {
+          setDate(new Date(data.date));
+        }
+        
+        toast.success(`Found ${mappedServices.length} services! Review and add them.`);
+        setShowExtractedDialog(true);
+      } else {
+        toast.warning('No services found. Please add manually.');
+        setDialogOpen(true);
       }
     } catch (error) {
       toast.error('Failed to process file');
+      setDialogOpen(true);
     } finally {
       setOcrLoading(false);
       if (fileInputRef.current) {
@@ -176,6 +204,65 @@ const ServiceRecordsPage = () => {
         cameraInputRef.current.value = '';
       }
     }
+  };
+
+  const handleAddExtractedServices = async () => {
+    const selectedServices = extractedServices.filter(s => s.selected && s.price > 0);
+    
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service');
+      return;
+    }
+    
+    if (!formData.vehicle_id) {
+      toast.error('Please select a vehicle');
+      return;
+    }
+    
+    if (!extractedMeta.odometer && !formData.odometer) {
+      toast.error('Please enter odometer reading');
+      return;
+    }
+    
+    setSubmitting(true);
+    let addedCount = 0;
+    
+    for (const service of selectedServices) {
+      try {
+        const submitData = {
+          vehicle_id: formData.vehicle_id,
+          service_type: service.service_type,
+          date: extractedMeta.date || formData.date,
+          price: parseFloat(service.price),
+          location: extractedMeta.location || '',
+          odometer: parseInt(extractedMeta.odometer || formData.odometer),
+          notes: service.notes || service.original_type,
+          provider: extractedMeta.provider || ''
+        };
+        
+        await axios.post(`${API_URL}/service-records`, submitData, getAuthHeader());
+        addedCount++;
+      } catch (error) {
+        console.error('Error adding service:', error);
+      }
+    }
+    
+    setSubmitting(false);
+    setShowExtractedDialog(false);
+    setExtractedServices([]);
+    
+    if (addedCount > 0) {
+      toast.success(`Added ${addedCount} service record${addedCount > 1 ? 's' : ''}!`);
+      fetchData();
+    } else {
+      toast.error('Failed to add services');
+    }
+  };
+
+  const toggleServiceSelection = (index) => {
+    setExtractedServices(prev => prev.map((s, i) => 
+      i === index ? { ...s, selected: !s.selected } : s
+    ));
   };
 
   const handleSubmit = async (e) => {
@@ -644,6 +731,140 @@ const ServiceRecordsPage = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Extracted Services Dialog */}
+        <Dialog open={showExtractedDialog} onOpenChange={setShowExtractedDialog}>
+          <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="font-heading font-bold text-xl">
+                Extracted Services ({extractedServices.filter(s => s.selected).length} selected)
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Vehicle Selection */}
+              <div className="space-y-2">
+                <Label>Vehicle *</Label>
+                <Select 
+                  value={formData.vehicle_id} 
+                  onValueChange={(value) => setFormData({...formData, vehicle_id: value})}
+                >
+                  <SelectTrigger className="rounded-sm">
+                    <SelectValue placeholder="Select vehicle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vehicles.map(v => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.year} {v.make} {v.model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Extracted Meta Info */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-sm">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Date:</span>{' '}
+                  <span className="font-medium">{extractedMeta.date || 'Not found'}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Odometer:</span>{' '}
+                  <span className="font-mono font-medium">
+                    {extractedMeta.odometer ? `${extractedMeta.odometer.toLocaleString()} km` : 'Not found'}
+                  </span>
+                </div>
+                <div className="text-sm col-span-2">
+                  <span className="text-muted-foreground">Provider:</span>{' '}
+                  <span className="font-medium">{extractedMeta.provider || 'Not found'}</span>
+                </div>
+              </div>
+
+              {/* Odometer input if not found */}
+              {!extractedMeta.odometer && (
+                <div className="space-y-2">
+                  <Label>Odometer (km) *</Label>
+                  <Input
+                    type="number"
+                    value={formData.odometer}
+                    onChange={(e) => setFormData({...formData, odometer: e.target.value})}
+                    placeholder="Enter odometer reading"
+                    className="rounded-sm font-mono"
+                  />
+                </div>
+              )}
+
+              {/* Services List */}
+              <div className="space-y-2">
+                <Label>Services Found</Label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {extractedServices.map((service, index) => (
+                    <div 
+                      key={index}
+                      onClick={() => toggleServiceSelection(index)}
+                      className={`p-3 rounded-sm border cursor-pointer transition-colors ${
+                        service.selected 
+                          ? 'border-primary bg-primary/5' 
+                          : 'border-border hover:border-muted-foreground'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            checked={service.selected}
+                            onChange={() => {}}
+                            className="h-4 w-4 rounded"
+                          />
+                          <div>
+                            <p className="font-medium">{service.service_type}</p>
+                            {service.notes && (
+                              <p className="text-xs text-muted-foreground">{service.notes}</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`font-mono font-bold ${service.price > 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                          ${service.price.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowExtractedDialog(false);
+                  setExtractedServices([]);
+                }}
+                className="rounded-sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddExtractedServices}
+                className="rounded-sm font-heading font-bold uppercase tracking-wider"
+                disabled={submitting || extractedServices.filter(s => s.selected).length === 0}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add {extractedServices.filter(s => s.selected).length} Service{extractedServices.filter(s => s.selected).length !== 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

@@ -167,6 +167,20 @@ class OCRExtractedData(BaseModel):
     confidence: str = "low"
     raw_text: Optional[str] = None
 
+class OCRServiceItem(BaseModel):
+    service_type: str
+    price: float
+    notes: Optional[str] = None
+
+class OCRMultipleServicesData(BaseModel):
+    services: List[OCRServiceItem] = []
+    date: Optional[str] = None
+    location: Optional[str] = None
+    odometer: Optional[int] = None
+    provider: Optional[str] = None
+    confidence: str = "low"
+    raw_text: Optional[str] = None
+
 # ==================== AUTH HELPERS ====================
 
 def hash_password(password: str) -> str:
@@ -510,7 +524,7 @@ async def delete_service_record(record_id: str, current_user: dict = Depends(get
 
 # ==================== OCR ENDPOINT ====================
 
-@api_router.post("/ocr/extract", response_model=OCRExtractedData)
+@api_router.post("/ocr/extract", response_model=OCRMultipleServicesData)
 async def extract_from_image(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
@@ -529,42 +543,35 @@ async def extract_from_image(
             try:
                 import fitz  # PyMuPDF
                 
-                # Open PDF from bytes
                 pdf_document = fitz.open(stream=content, filetype="pdf")
                 
                 if len(pdf_document) == 0:
-                    return OCRExtractedData(
+                    return OCRMultipleServicesData(
                         confidence="low",
                         raw_text="PDF file is empty"
                     )
                 
-                # Get first page and render as image
                 page = pdf_document[0]
                 mat = fitz.Matrix(2, 2)
                 pix = page.get_pixmap(matrix=mat)
-                
-                # Convert to PNG bytes
                 image_bytes = pix.tobytes("png")
                 image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                
                 pdf_document.close()
                 
             except ImportError:
-                return OCRExtractedData(
+                return OCRMultipleServicesData(
                     confidence="low",
                     raw_text="PDF processing not available. Please upload an image instead."
                 )
             except Exception as pdf_error:
                 logging.error(f"PDF processing error: {str(pdf_error)}")
-                return OCRExtractedData(
+                return OCRMultipleServicesData(
                     confidence="low",
                     raw_text=f"Error processing PDF: {str(pdf_error)}"
                 )
         else:
-            # Regular image file
             image_base64 = base64.b64encode(content).decode('utf-8')
         
-        # Initialize LLM chat
         api_key = os.environ.get('EMERGENT_LLM_KEY')
         if not api_key:
             raise HTTPException(status_code=500, detail="OCR service not configured")
@@ -573,51 +580,89 @@ async def extract_from_image(
             api_key=api_key,
             session_id=f"ocr-{uuid.uuid4()}",
             system_message="""You are an expert at extracting car service information from receipts and invoices.
-Extract the following information if present:
-- Service type (e.g., oil change, tire rotation, brake service, etc.)
-- Date of service (format: YYYY-MM-DD)
-- Price/cost (as a number, total amount paid)
-- Location/address of service center
-- Odometer reading (in km, look for mileage or odometer)
-- Service provider/shop name
 
-Return ONLY a JSON object with these exact fields:
+IMPORTANT: A receipt may contain MULTIPLE services. Extract ALL services as separate items.
+
+For each service found, categorize it into one of these types:
+- Oil Change
+- Tire Rotation
+- Brake Service
+- Air Filter
+- Transmission Service
+- Coolant Flush
+- Battery Replacement
+- Spark Plugs
+- Wheel Alignment
+- Inspection
+- Other
+
+Return a JSON object with this EXACT structure:
 {
-  "service_type": "string or null",
+  "services": [
+    {"service_type": "category from list above", "price": number, "notes": "specific description"},
+    {"service_type": "category from list above", "price": number, "notes": "specific description"}
+  ],
   "date": "YYYY-MM-DD or null",
-  "price": number or null,
-  "location": "string or null",
+  "location": "address or null",
   "odometer": number or null,
-  "provider": "string or null",
+  "provider": "shop name or null",
   "confidence": "high/medium/low",
-  "raw_text": "brief summary of what was found"
-}"""
+  "raw_text": "brief summary"
+}
+
+Example mappings:
+- "Brake System Flush" -> service_type: "Brake Service"
+- "Cabin Air Filter Replace" -> service_type: "Air Filter"
+- "Battery Terminal Cleaning" -> service_type: "Battery Replacement"
+- "Oil change with tire rotation" -> TWO entries: "Oil Change" AND "Tire Rotation"
+
+Extract ALL line items with prices > 0."""
         ).with_model("openai", "gpt-5.2")
         
-        # Create image content - ImageContent is a subclass of FileContent with content_type="image"
         image_content = ImageContent(image_base64=image_base64)
         
         user_message = UserMessage(
-            text="Please extract car service information from this receipt/invoice. Return only the JSON object.",
+            text="Extract ALL car services from this receipt. Return the JSON with services array containing each service separately.",
             file_contents=[image_content]
         )
         
         response = await chat.send_message(user_message)
         
         # Try to extract JSON from response
-        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
         if json_match:
-            data = json.loads(json_match.group())
-            return OCRExtractedData(**data)
-        else:
-            return OCRExtractedData(
-                confidence="low",
-                raw_text=response[:500] if response else "Could not extract data"
-            )
+            try:
+                data = json.loads(json_match.group())
+                # Validate and construct response
+                services = []
+                for svc in data.get("services", []):
+                    if svc.get("service_type") and svc.get("price") is not None:
+                        services.append(OCRServiceItem(
+                            service_type=svc["service_type"],
+                            price=float(svc["price"]),
+                            notes=svc.get("notes")
+                        ))
+                
+                return OCRMultipleServicesData(
+                    services=services,
+                    date=data.get("date"),
+                    location=data.get("location"),
+                    odometer=data.get("odometer"),
+                    provider=data.get("provider"),
+                    confidence=data.get("confidence", "medium"),
+                    raw_text=data.get("raw_text", "")
+                )
+            except json.JSONDecodeError:
+                pass
+        
+        return OCRMultipleServicesData(
+            confidence="low",
+            raw_text=response[:500] if response else "Could not extract data"
+        )
             
     except Exception as e:
         logging.error(f"OCR extraction error: {str(e)}")
-        return OCRExtractedData(
+        return OCRMultipleServicesData(
             confidence="low",
             raw_text=f"Error processing file: {str(e)}"
         )
