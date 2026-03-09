@@ -522,10 +522,10 @@ async def extract_from_image(
         
         # Read file content
         content = await file.read()
-        content_type = file.content_type or ''
+        content_type = file.content_type or 'image/jpeg'
         
         # Handle PDF files - extract first page as image
-        if content_type == 'application/pdf' or file.filename.lower().endswith('.pdf'):
+        if content_type == 'application/pdf' or (file.filename and file.filename.lower().endswith('.pdf')):
             try:
                 import fitz  # PyMuPDF
                 
@@ -540,7 +540,6 @@ async def extract_from_image(
                 
                 # Get first page and render as image
                 page = pdf_document[0]
-                # Render at 2x resolution for better OCR
                 mat = fitz.Matrix(2, 2)
                 pix = page.get_pixmap(matrix=mat)
                 
@@ -551,7 +550,6 @@ async def extract_from_image(
                 pdf_document.close()
                 
             except ImportError:
-                # PyMuPDF not installed, try alternative
                 return OCRExtractedData(
                     confidence="low",
                     raw_text="PDF processing not available. Please upload an image instead."
@@ -578,9 +576,9 @@ async def extract_from_image(
 Extract the following information if present:
 - Service type (e.g., oil change, tire rotation, brake service, etc.)
 - Date of service (format: YYYY-MM-DD)
-- Price/cost (as a number)
+- Price/cost (as a number, total amount paid)
 - Location/address of service center
-- Odometer reading (in km)
+- Odometer reading (in km, look for mileage or odometer)
 - Service provider/shop name
 
 Return ONLY a JSON object with these exact fields:
@@ -592,15 +590,16 @@ Return ONLY a JSON object with these exact fields:
   "odometer": number or null,
   "provider": "string or null",
   "confidence": "high/medium/low",
-  "raw_text": "extracted text summary"
+  "raw_text": "brief summary of what was found"
 }"""
         ).with_model("openai", "gpt-5.2")
         
+        # Create image content - ImageContent is a subclass of FileContent with content_type="image"
         image_content = ImageContent(image_base64=image_base64)
         
         user_message = UserMessage(
-            text="Please extract car service information from this receipt/invoice image. Return only the JSON object.",
-            image_contents=[image_content]
+            text="Please extract car service information from this receipt/invoice. Return only the JSON object.",
+            file_contents=[image_content]
         )
         
         response = await chat.send_message(user_message)
