@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Download, FileSpreadsheet, FileText, Loader2, Car, Check } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Loader2, Car, Check, Copy, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Label } from '../components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Textarea } from '../components/ui/textarea';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -17,6 +19,8 @@ const ExportPage = () => {
   const [selectedVehicle, setSelectedVehicle] = useState('all');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(null);
+  const [csvData, setCsvData] = useState('');
+  const [showCsvDialog, setShowCsvDialog] = useState(false);
   const { getAuthHeader, token } = useAuth();
 
   useEffect(() => {
@@ -39,33 +43,48 @@ const ExportPage = () => {
     try {
       const params = selectedVehicle !== 'all' ? `?vehicle_id=${selectedVehicle}` : '';
       const response = await axios.get(`${API_URL}/export/csv${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+        headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Direct download using anchor element
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'service_records.csv';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      
-      // Cleanup
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 150);
-      
-      toast.success('CSV download started!');
+      // Show CSV data in dialog for copying
+      setCsvData(response.data);
+      setShowCsvDialog(true);
+      toast.success('CSV data loaded!');
     } catch (error) {
       console.error('CSV export error:', error);
       toast.error('Failed to export CSV');
     } finally {
       setExporting(null);
     }
+  };
+
+  const handleCopyCSV = async () => {
+    try {
+      await navigator.clipboard.writeText(csvData);
+      toast.success('CSV copied to clipboard! Paste into a .csv file or spreadsheet.');
+    } catch (error) {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = csvData;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      toast.success('CSV copied to clipboard!');
+    }
+  };
+
+  const handleDownloadCSVFile = () => {
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'service_records.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Download initiated!');
   };
 
   const handleExportPDF = async () => {
@@ -77,23 +96,19 @@ const ExportPage = () => {
         responseType: 'blob'
       });
       
-      // Direct download using anchor element
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'service_records.pdf';
-      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       
-      // Cleanup
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 150);
+      // Keep URL for a bit in case download doesn't start
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
       
-      toast.success('PDF download started!');
+      toast.success('PDF download initiated! Check your Downloads folder.');
     } catch (error) {
       console.error('PDF export error:', error);
       toast.error('Failed to export PDF');
@@ -200,12 +215,12 @@ const ExportPage = () => {
                   {exporting === 'csv' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Exporting...
+                      Loading...
                     </>
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
-                      Download CSV
+                      Export CSV
                     </>
                   )}
                 </Button>
@@ -258,7 +273,7 @@ const ExportPage = () => {
                   {exporting === 'pdf' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Exporting...
+                      Generating...
                     </>
                   ) : (
                     <>
@@ -281,6 +296,47 @@ const ExportPage = () => {
             </p>
           </CardContent>
         </Card>
+
+        {/* CSV Data Dialog */}
+        <Dialog open={showCsvDialog} onOpenChange={setShowCsvDialog}>
+          <DialogContent className="max-w-2xl max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle className="font-heading font-bold text-xl">CSV Export</DialogTitle>
+              <DialogDescription>
+                Copy the data below or download as a file
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Textarea 
+                value={csvData} 
+                readOnly 
+                className="h-64 font-mono text-xs"
+              />
+              <div className="flex gap-3">
+                <Button 
+                  onClick={handleCopyCSV}
+                  className="flex-1 rounded-sm font-heading font-bold uppercase tracking-wider"
+                  data-testid="copy-csv-btn"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy to Clipboard
+                </Button>
+                <Button 
+                  onClick={handleDownloadCSVFile}
+                  variant="outline"
+                  className="flex-1 rounded-sm font-heading font-bold uppercase tracking-wider"
+                  data-testid="download-csv-file-btn"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download File
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                Tip: After copying, paste into Excel, Google Sheets, or save as a .csv file
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

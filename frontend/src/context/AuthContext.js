@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(null);
@@ -10,24 +10,33 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      if (token) {
-        try {
-          const response = await axios.get(`${API_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setUser(response.data);
-        } catch (error) {
-          localStorage.removeItem('token');
-          setToken(null);
-          setUser(null);
-        }
-      }
+  const checkAuth = useCallback(async () => {
+    // CRITICAL: If returning from OAuth callback, skip the /me check
+    // AuthCallback will exchange the session_id and establish the session first
+    if (window.location.hash?.includes('session_id=')) {
       setLoading(false);
-    };
-    initAuth();
+      return;
+    }
+
+    if (token) {
+      try {
+        const response = await axios.get(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true
+        });
+        setUser(response.data);
+      } catch (error) {
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+      }
+    }
+    setLoading(false);
   }, [token]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const login = async (email, password) => {
     const response = await axios.post(`${API_URL}/auth/login`, { email, password });
@@ -47,7 +56,30 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const logout = () => {
+  const loginWithGoogle = () => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const redirectUrl = window.location.origin + '/dashboard';
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  };
+
+  const handleGoogleCallback = async (sessionId) => {
+    const response = await axios.post(`${API_URL}/auth/google/session`, 
+      { session_id: sessionId },
+      { withCredentials: true }
+    );
+    const { access_token, user: userData } = response.data;
+    localStorage.setItem('token', access_token);
+    setToken(access_token);
+    setUser(userData);
+    return userData;
+  };
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
+    } catch (e) {
+      // Ignore errors
+    }
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
@@ -58,7 +90,19 @@ export const AuthProvider = ({ children }) => {
   });
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, getAuthHeader }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      token, 
+      loading, 
+      login, 
+      register, 
+      loginWithGoogle,
+      handleGoogleCallback,
+      logout, 
+      getAuthHeader,
+      setUser,
+      setToken
+    }}>
       {children}
     </AuthContext.Provider>
   );

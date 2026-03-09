@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import AuthCallback from "./components/AuthCallback";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -14,6 +15,12 @@ import "./App.css";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  
+  // If user data passed from AuthCallback, use it
+  if (location.state?.user) {
+    return children;
+  }
   
   if (loading) {
     return (
@@ -48,21 +55,35 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+// Router component that handles OAuth callback detection
+const AppRouter = () => {
+  const location = useLocation();
+  
+  // Check URL fragment for session_id (OAuth callback) - synchronous check before render
+  if (location.hash?.includes('session_id=')) {
+    return <AuthCallback />;
+  }
+  
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+      <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
+      <Route path="/services" element={<ProtectedRoute><ServiceRecordsPage /></ProtectedRoute>} />
+      <Route path="/reminders" element={<ProtectedRoute><RemindersPage /></ProtectedRoute>} />
+      <Route path="/export" element={<ProtectedRoute><ExportPage /></ProtectedRoute>} />
+    </Routes>
+  );
+};
+
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-            <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
-            <Route path="/services" element={<ProtectedRoute><ServiceRecordsPage /></ProtectedRoute>} />
-            <Route path="/reminders" element={<ProtectedRoute><RemindersPage /></ProtectedRoute>} />
-            <Route path="/export" element={<ProtectedRoute><ExportPage /></ProtectedRoute>} />
-          </Routes>
+          <AppRouter />
           <Toaster position="top-right" richColors />
         </BrowserRouter>
       </AuthProvider>

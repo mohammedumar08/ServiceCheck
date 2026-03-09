@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -14,6 +14,7 @@ import jwt
 import bcrypt
 import base64
 from io import BytesIO
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -182,22 +183,50 @@ def create_token(user_id: str, email: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user_from_token(token: str):
+    """Helper to get user from token string"""
     try:
-        token = credentials.credentials
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
+            return None
         user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
         return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except:
+        return None
+
+async def get_current_user(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))):
+    """Get current user from session cookie or Authorization header"""
+    # First try session cookie (Google OAuth)
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        session = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
+        if session:
+            # Check expiry
+            expires_at = session.get("expires_at")
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at > datetime.now(timezone.utc):
+                user = await db.users.find_one({"id": session["user_id"]}, {"_id": 0, "password": 0})
+                if user:
+                    return user
+    
+    # Fall back to JWT token (email/password auth)
+    if credentials:
+        try:
+            token = credentials.credentials
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user_id = payload.get("user_id")
+            if user_id:
+                user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+                if user:
+                    return user
+        except:
+            pass
+    
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 # ==================== AUTH ENDPOINTS ====================
 
@@ -244,6 +273,106 @@ async def login(login_data: UserLogin):
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(**current_user)
+
+# ==================== GOOGLE OAUTH ENDPOINTS ====================
+
+class GoogleSessionRequest(BaseModel):
+    session_id: str
+
+@api_router.post("/auth/google/session")
+async def google_session(request: GoogleSessionRequest, response: Response):
+    """Exchange Google OAuth session_id for user session"""
+    # REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    try:
+        # Call Emergent Auth to get session data
+        async with httpx.AsyncClient() as client:
+            auth_response = await client.get(
+                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                headers={"X-Session-ID": request.session_id}
+            )
+            
+            if auth_response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid session")
+            
+            auth_data = auth_response.json()
+        
+        email = auth_data.get("email")
+        name = auth_data.get("name")
+        picture = auth_data.get("picture")
+        session_token = auth_data.get("session_token")
+        
+        if not email or not session_token:
+            raise HTTPException(status_code=401, detail="Invalid session data")
+        
+        # Check if user exists, create if not
+        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+        
+        if existing_user:
+            user_id = existing_user["id"]
+            # Update user info if needed
+            await db.users.update_one(
+                {"id": user_id},
+                {"$set": {"name": name, "picture": picture}}
+            )
+        else:
+            # Create new user
+            user_id = str(uuid.uuid4())
+            user_doc = {
+                "id": user_id,
+                "email": email,
+                "name": name,
+                "picture": picture,
+                "password": None,  # No password for OAuth users
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(user_doc)
+        
+        # Store session
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        await db.user_sessions.delete_many({"user_id": user_id})  # Remove old sessions
+        await db.user_sessions.insert_one({
+            "user_id": user_id,
+            "session_token": session_token,
+            "expires_at": expires_at.isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Set cookie
+        response.set_cookie(
+            key="session_token",
+            value=session_token,
+            httponly=True,
+            secure=True,
+            samesite="none",
+            path="/",
+            max_age=7*24*60*60  # 7 days
+        )
+        
+        # Get user data
+        user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+        
+        # Also return JWT token for API calls
+        jwt_token = create_token(user_id, email)
+        
+        return {
+            "access_token": jwt_token,
+            "token_type": "bearer",
+            "user": UserResponse(**user)
+        }
+        
+    except httpx.RequestError as e:
+        logging.error(f"Google auth error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication service error")
+
+@api_router.post("/auth/logout")
+async def logout(request: Request, response: Response):
+    """Logout user and clear session"""
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        await db.user_sessions.delete_one({"session_token": session_token})
+    
+    response.delete_cookie(key="session_token", path="/")
+    return {"message": "Logged out successfully"}
 
 # ==================== VEHICLE ENDPOINTS ====================
 
