@@ -517,10 +517,54 @@ async def extract_from_image(
 ):
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        import json
+        import re
         
-        # Read and encode the image
+        # Read file content
         content = await file.read()
-        image_base64 = base64.b64encode(content).decode('utf-8')
+        content_type = file.content_type or ''
+        
+        # Handle PDF files - extract first page as image
+        if content_type == 'application/pdf' or file.filename.lower().endswith('.pdf'):
+            try:
+                import fitz  # PyMuPDF
+                
+                # Open PDF from bytes
+                pdf_document = fitz.open(stream=content, filetype="pdf")
+                
+                if len(pdf_document) == 0:
+                    return OCRExtractedData(
+                        confidence="low",
+                        raw_text="PDF file is empty"
+                    )
+                
+                # Get first page and render as image
+                page = pdf_document[0]
+                # Render at 2x resolution for better OCR
+                mat = fitz.Matrix(2, 2)
+                pix = page.get_pixmap(matrix=mat)
+                
+                # Convert to PNG bytes
+                image_bytes = pix.tobytes("png")
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                
+                pdf_document.close()
+                
+            except ImportError:
+                # PyMuPDF not installed, try alternative
+                return OCRExtractedData(
+                    confidence="low",
+                    raw_text="PDF processing not available. Please upload an image instead."
+                )
+            except Exception as pdf_error:
+                logging.error(f"PDF processing error: {str(pdf_error)}")
+                return OCRExtractedData(
+                    confidence="low",
+                    raw_text=f"Error processing PDF: {str(pdf_error)}"
+                )
+        else:
+            # Regular image file
+            image_base64 = base64.b64encode(content).decode('utf-8')
         
         # Initialize LLM chat
         api_key = os.environ.get('EMERGENT_LLM_KEY')
@@ -561,10 +605,6 @@ Return ONLY a JSON object with these exact fields:
         
         response = await chat.send_message(user_message)
         
-        # Parse the response
-        import json
-        import re
-        
         # Try to extract JSON from response
         json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
         if json_match:
@@ -580,7 +620,7 @@ Return ONLY a JSON object with these exact fields:
         logging.error(f"OCR extraction error: {str(e)}")
         return OCRExtractedData(
             confidence="low",
-            raw_text=f"Error processing image: {str(e)}"
+            raw_text=f"Error processing file: {str(e)}"
         )
 
 # ==================== REMINDER ENDPOINTS ====================

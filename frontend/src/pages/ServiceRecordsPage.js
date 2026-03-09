@@ -55,6 +55,7 @@ const ServiceRecordsPage = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const { getAuthHeader, token } = useAuth();
 
   useEffect(() => {
@@ -119,9 +120,15 @@ const ServiceRecordsPage = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      toast.error('Please upload a JPEG, PNG, or WebP image');
+      toast.error('Please upload a JPEG, PNG, WebP image or PDF file');
+      return;
+    }
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be less than 10MB');
       return;
     }
 
@@ -159,11 +166,14 @@ const ServiceRecordsPage = () => {
         setDate(new Date(data.date));
       }
     } catch (error) {
-      toast.error('Failed to process image');
+      toast.error('Failed to process file');
     } finally {
       setOcrLoading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
       }
     }
   };
@@ -379,37 +389,72 @@ const ServiceRecordsPage = () => {
             </DialogHeader>
             
             {!selectedRecord && (
-              <div className="mb-4">
+              <div className="mb-4 space-y-3">
+                {/* Hidden file inputs */}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
                   onChange={handleFileUpload}
                   className="hidden"
                   id="ocr-upload"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full rounded-sm border-dashed border-2 h-20"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={ocrLoading}
-                  data-testid="ocr-upload-btn"
-                >
-                  {ocrLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Processing image...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="mr-2 h-5 w-5" />
-                      Upload Receipt for AI Extraction
-                    </>
-                  )}
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Supports JPEG, PNG, WebP. AI will extract service details automatically.
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="camera-capture"
+                />
+                
+                {/* Upload buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-sm border-dashed border-2 h-20 flex-col gap-1"
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={ocrLoading}
+                    data-testid="camera-capture-btn"
+                  >
+                    {ocrLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Camera className="h-5 w-5" />
+                        <span className="text-xs">Take Photo</span>
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-sm border-dashed border-2 h-20 flex-col gap-1"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={ocrLoading}
+                    data-testid="ocr-upload-btn"
+                  >
+                    {ocrLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Upload className="h-5 w-5" />
+                        <span className="text-xs">Upload File</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {ocrLoading && (
+                  <p className="text-sm text-center text-muted-foreground">
+                    Processing with AI... This may take a few seconds.
+                  </p>
+                )}
+                
+                <p className="text-xs text-muted-foreground text-center">
+                  Supports JPEG, PNG, WebP, PDF. AI will extract service details automatically.
                 </p>
               </div>
             )}
