@@ -3,15 +3,19 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Wrench, LayoutDashboard, Car, FileText, Bell, Download, 
-  LogOut, Menu, X, Sun, Moon, User
+  LogOut, Menu, X, Sun, Moon, User, Trash2, Loader2
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { toast } from 'sonner';
 
 const DashboardLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { user, logout, deleteAccount } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -27,6 +31,20 @@ const DashboardLayout = ({ children }) => {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      toast.success('Account deleted successfully');
+      navigate('/');
+    } catch (error) {
+      toast.error('Failed to delete account');
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
   };
 
   return (
@@ -124,6 +142,15 @@ const DashboardLayout = ({ children }) => {
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
                 </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full rounded-sm text-destructive hover:text-destructive hover:bg-destructive/10 mt-2"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  data-testid="mobile-delete-account-btn"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Account
+                </Button>
               </div>
             </motion.aside>
           </>
@@ -180,6 +207,15 @@ const DashboardLayout = ({ children }) => {
             <LogOut className="mr-2 h-4 w-4" />
             Sign Out
           </Button>
+          <Button
+            variant="ghost"
+            className="w-full rounded-sm text-destructive hover:text-destructive hover:bg-destructive/10 mt-2"
+            onClick={() => setDeleteDialogOpen(true)}
+            data-testid="desktop-delete-account-btn"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Account
+          </Button>
         </div>
       </aside>
 
@@ -189,6 +225,34 @@ const DashboardLayout = ({ children }) => {
           {children}
         </div>
       </main>
+
+      {/* Delete Account Confirmation */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading font-bold">Delete Your Account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete your account and all your data including vehicles, service records, and reminders. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-sm" disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-sm"
+              disabled={deleting}
+              data-testid="confirm-delete-account-btn"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : 'Delete Account'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

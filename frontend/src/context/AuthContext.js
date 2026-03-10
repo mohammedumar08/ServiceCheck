@@ -10,6 +10,22 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
+  // Global 401 interceptor - auto-logout if user is deleted or token is invalid
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401 && token) {
+          localStorage.removeItem('token');
+          setToken(null);
+          setUser(null);
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, [token]);
+
   const checkAuth = useCallback(async () => {
     // CRITICAL: If returning from OAuth callback, skip the /me check
     // AuthCallback will exchange the session_id and establish the session first
@@ -84,6 +100,15 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const deleteAccount = async () => {
+    await axios.delete(`${API_URL}/auth/account`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+  };
+
   const getAuthHeader = () => ({
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -98,6 +123,7 @@ export const AuthProvider = ({ children }) => {
       loginWithGoogle,
       handleGoogleCallback,
       logout, 
+      deleteAccount,
       getAuthHeader,
       setUser,
       setToken

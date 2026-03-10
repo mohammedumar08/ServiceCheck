@@ -388,6 +388,19 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(key="session_token", path="/")
     return {"message": "Logged out successfully"}
 
+@api_router.delete("/auth/account")
+async def delete_account(current_user: dict = Depends(get_current_user)):
+    """Delete user account and all associated data"""
+    user_id = current_user["id"]
+    
+    await db.service_records.delete_many({"user_id": user_id})
+    await db.reminders.delete_many({"user_id": user_id})
+    await db.vehicles.delete_many({"user_id": user_id})
+    await db.user_sessions.delete_many({"user_id": user_id})
+    await db.users.delete_one({"id": user_id})
+    
+    return {"message": "Account deleted successfully"}
+
 # ==================== VEHICLE ENDPOINTS ====================
 
 @api_router.post("/vehicles", response_model=VehicleResponse)
