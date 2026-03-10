@@ -136,7 +136,6 @@ const ServiceRecordsPage = () => {
     }
 
     setOcrLoading(true);
-    setDialogOpen(false); // Close add dialog
     const formDataObj = new FormData();
     formDataObj.append('file', file);
 
@@ -152,7 +151,6 @@ const ServiceRecordsPage = () => {
       
       if (data.confidence === 'low' && (!data.services || data.services.length === 0)) {
         toast.warning('Could not extract services. Please add manually.');
-        setDialogOpen(true);
         return;
       }
       
@@ -187,14 +185,13 @@ const ServiceRecordsPage = () => {
         }
         
         toast.success(`Found ${mappedServices.length} services! Review and add them.`);
+        setDialogOpen(false);
         setShowExtractedDialog(true);
       } else {
         toast.warning('No services found. Please add manually.');
-        setDialogOpen(true);
       }
     } catch (error) {
       toast.error('Failed to process file');
-      setDialogOpen(true);
     } finally {
       setOcrLoading(false);
       if (fileInputRef.current) {

@@ -37,7 +37,8 @@ Build a web-based app for tracking car service records. Users should be able to 
 - ARCHITECTURE.md and README.md
 
 ## Bug Fixes
-- [Feb 2026] Fixed manual login redirect not working on custom domain: Removed `withCredentials: true` from `/auth/me` call (was causing CORS rejection on cross-origin credentialed requests). Replaced `window.location.href` with React Router `navigate()` to preserve state.
+- [Feb 2026] Fixed manual login redirect on custom domain: Removed `withCredentials: true` from `/auth/me` call (CORS rejection), replaced `window.location.href` with `navigate()`.
+- [Feb 2026] Fixed file upload closing Add Service dialog: Dialog now stays open during OCR processing and only closes when extracted services dialog opens.
 
 ## Known Issues
 - Google OAuth on custom domain: Requires Emergent Support to whitelist `getservicecheck.com` in OAuth redirect URIs. NOT a code issue.
