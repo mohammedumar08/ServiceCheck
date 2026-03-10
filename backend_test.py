@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 class CarServiceAPITester:
-    def __init__(self, base_url: str = "https://auto-service-records.preview.emergentagent.com"):
+    def __init__(self, base_url: str = "https://service-check-app.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.token = None

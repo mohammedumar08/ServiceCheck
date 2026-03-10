@@ -1,75 +1,49 @@
 # Car Service Tracker - Product Requirements Document
 
 ## Original Problem Statement
-Build a web based app for tracking the Car service records by user uploading the photo or manually entering the services with price. Service records should store type of service made, date, price, location, odometer in km/miles.
+Build a web-based app for tracking car service records. Users should be able to upload a photo of a receipt or manually enter service details. The service records should store the type of service, date, price, location, and odometer reading in km/miles.
 
-## User Choices
-- AI-powered OCR using OpenAI GPT-5.2
-- Kilometers (km) as default unit
-- Multiple vehicle support
-- Service reminders/notifications
-- Export records (CSV/JSON)
-- JWT-based authentication
+## Core Requirements
+- User Authentication: JWT-based (email/password) and Google Social Login
+- AI-powered OCR: Extract service details from uploaded receipts using OpenAI GPT-5.2
+- Multi-vehicle management
+- Manual add/edit service records
+- Upload receipts via file picker (Image/PDF) or camera
+- Review and confirm OCR-extracted data before saving
+- Service reminders
+- Export to CSV and PDF
+- Odometer unit: Kilometers (km) default
 
-## Architecture
-- **Frontend**: React 19 + Tailwind CSS + Shadcn UI + Framer Motion
-- **Backend**: FastAPI + MongoDB (Motor async driver)
-- **Authentication**: JWT tokens with bcrypt password hashing
-- **OCR Integration**: OpenAI GPT-5.2 via emergentintegrations library
+## Tech Stack
+- Frontend: React, Tailwind CSS, Shadcn UI, Framer Motion
+- Backend: FastAPI (Python), Pydantic
+- Database: MongoDB (motor async driver)
+- Auth: JWT + Emergent-managed Google OAuth
+- AI/OCR: emergentintegrations (OpenAI GPT-5.2)
+- PDF: reportlab (generation), PyMuPDF (PDF-to-image for OCR)
 
-## User Personas
-1. **Primary**: Car owners wanting to track vehicle maintenance history
-2. **Secondary**: Fleet managers tracking multiple vehicles
+## What's Been Implemented (Complete)
+- Full-stack Car Service Tracker app
+- JWT email/password authentication
+- Emergent-managed Google OAuth
+- AI-powered OCR with multi-line item extraction
+- PDF and image upload support + camera capture
+- CSV and PDF export
+- Multi-vehicle management with CRUD
+- Service record CRUD
+- Service reminders
+- Dashboard with stats
+- Responsive dark automotive theme UI
+- ARCHITECTURE.md and README.md
 
-## Core Requirements (Static)
-- User authentication (register/login)
-- Multi-vehicle management (CRUD)
-- Service record tracking (type, date, price, location, odometer)
-- Photo upload with AI OCR extraction
-- Service reminders with due dates
-- Data export (CSV/JSON)
+## Bug Fixes
+- [Feb 2026] Fixed manual login redirect not working on custom domain: Removed `withCredentials: true` from `/auth/me` call (was causing CORS rejection on cross-origin credentialed requests). Replaced `window.location.href` with React Router `navigate()` to preserve state.
 
-## What's Been Implemented (January 2026)
-### Backend
-- [x] JWT authentication (register, login, profile)
-- [x] Vehicle CRUD endpoints
-- [x] Service Record CRUD endpoints
-- [x] Reminder CRUD endpoints
-- [x] OCR extraction endpoint using GPT-5.2
-- [x] Export endpoints (CSV, JSON)
-- [x] Dashboard stats endpoint
+## Known Issues
+- Google OAuth on custom domain: Requires Emergent Support to whitelist `getservicecheck.com` in OAuth redirect URIs. NOT a code issue.
+- File downloads blocked in preview iframe: Workaround with `window.open()` accepted.
 
-### Frontend
-- [x] Landing page with hero section and features
-- [x] Auth pages (Login, Register)
-- [x] Dashboard with stats cards and recent activity
-- [x] Vehicles page (add, edit, delete)
-- [x] Service Records page (manual entry + OCR upload)
-- [x] Reminders page with status badges
-- [x] Export page (CSV/JSON)
-- [x] Dark/Light theme toggle
-- [x] Responsive design
-
-## Prioritized Backlog
-
-### P0 (Critical) - Done
-- ✅ Core CRUD operations
-- ✅ Authentication
-- ✅ AI OCR integration
-
-### P1 (High Priority) - Future
-- [ ] Push notifications for reminders
-- [ ] PDF export with formatted report
-- [ ] Service cost analytics charts
-
-### P2 (Nice to Have)
-- [ ] Multiple user roles (admin/viewer)
-- [ ] Vehicle image gallery
-- [ ] Service center directory
-- [ ] Mobile app (React Native)
-
-## Next Action Items
-1. Add service cost analytics with charts (Recharts)
-2. Implement PDF export with ReportLab
-3. Add email notifications for due reminders
-4. Add vehicle image upload support
+## Backlog
+- P1: PWA support (Add to Home Screen)
+- P2: Capacitor native app wrapping (iOS/Android)
+- P2: Remove unused `file-saver` dependency
