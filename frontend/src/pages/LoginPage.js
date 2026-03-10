@@ -48,10 +48,10 @@ const LoginPage = () => {
     try {
       await login(email, password);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      // Use window.location for hard redirect to ensure state is fresh
+      window.location.href = '/dashboard';
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Login failed');
-    } finally {
       setLoading(false);
     }
   };

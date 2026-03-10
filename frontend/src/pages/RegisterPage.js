@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Wrench, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -36,7 +36,6 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { register, loginWithGoogle } = useAuth();
-  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,10 +52,10 @@ const RegisterPage = () => {
     try {
       await register(email, password, name);
       toast.success('Account created successfully!');
-      navigate('/dashboard');
+      // Use window.location for hard redirect to ensure state is fresh
+      window.location.href = '/dashboard';
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Registration failed');
-    } finally {
       setLoading(false);
     }
   };
