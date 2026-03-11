@@ -79,8 +79,7 @@ export const AuthProvider = ({ children }) => {
 
   const handleGoogleCallback = async (sessionId) => {
     const response = await axios.post(`${API_URL}/auth/google/session`, 
-      { session_id: sessionId },
-      { withCredentials: true }
+      { session_id: sessionId }
     );
     const { access_token, user: userData } = response.data;
     localStorage.setItem('token', access_token);
@@ -91,7 +90,11 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
+      if (token) {
+        await axios.post(`${API_URL}/auth/logout`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
     } catch (e) {
       // Ignore errors
     }
