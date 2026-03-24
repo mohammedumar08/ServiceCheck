@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Car, Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -6,11 +6,13 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../components/ui/alert-dialog';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { VEHICLE_DATA, VEHICLE_MAKES, YEARS } from '../data/vehicleData';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -31,6 +33,11 @@ const VehiclesPage = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const { getAuthHeader } = useAuth();
+
+  const availableModels = useMemo(() => {
+    if (!formData.make || !VEHICLE_DATA[formData.make]) return [];
+    return VEHICLE_DATA[formData.make];
+  }, [formData.make]);
 
   useEffect(() => {
     fetchVehicles();
@@ -253,41 +260,54 @@ const VehiclesPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="make">Make *</Label>
-                  <Input
-                    id="make"
-                    data-testid="vehicle-make-input"
+                  <Select
                     value={formData.make}
-                    onChange={(e) => setFormData({...formData, make: e.target.value})}
-                    placeholder="Toyota"
-                    className="rounded-sm"
-                    required
-                  />
+                    onValueChange={(value) => setFormData({...formData, make: value, model: ''})}
+                  >
+                    <SelectTrigger className="rounded-sm" data-testid="vehicle-make-input">
+                      <SelectValue placeholder="Select make" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {VEHICLE_MAKES.map(make => (
+                        <SelectItem key={make} value={make}>{make}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="model">Model *</Label>
-                  <Input
-                    id="model"
-                    data-testid="vehicle-model-input"
+                  <Select
                     value={formData.model}
-                    onChange={(e) => setFormData({...formData, model: e.target.value})}
-                    placeholder="Camry"
-                    className="rounded-sm"
-                    required
-                  />
+                    onValueChange={(value) => setFormData({...formData, model: value})}
+                    disabled={!formData.make}
+                  >
+                    <SelectTrigger className="rounded-sm" data-testid="vehicle-model-input">
+                      <SelectValue placeholder={formData.make ? "Select model" : "Select make first"} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {availableModels.map(model => (
+                        <SelectItem key={model} value={model}>{model}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="year">Year *</Label>
-                  <Input
-                    id="year"
-                    data-testid="vehicle-year-input"
-                    type="number"
-                    value={formData.year}
-                    onChange={(e) => setFormData({...formData, year: parseInt(e.target.value)})}
-                    className="rounded-sm"
-                    required
-                  />
+                  <Select
+                    value={formData.year.toString()}
+                    onValueChange={(value) => setFormData({...formData, year: parseInt(value)})}
+                  >
+                    <SelectTrigger className="rounded-sm" data-testid="vehicle-year-input">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {YEARS.map(year => (
+                        <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="color">Color</Label>
