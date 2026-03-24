@@ -933,15 +933,53 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     ).to_list(100)
     
-    # Calculate stats
     total_spent = sum(r.get("price", 0) for r in records)
     
-    # Get upcoming reminders (next 30 days)
     today = datetime.now(timezone.utc).date()
     upcoming = [r for r in reminders if r.get("due_date")]
     
-    # Recent services (last 5)
     recent_records = sorted(records, key=lambda x: x.get("date", ""), reverse=True)[:5]
+    
+    # Monthly expenses for current year
+    current_year = today.year
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    monthly_expenses = []
+    for m in range(1, 13):
+        month_total = sum(
+            r.get("price", 0) for r in records
+            if r.get("date", "").startswith(f"{current_year}-{m:02d}")
+        )
+        monthly_expenses.append({"month": month_names[m - 1], "amount": round(month_total, 2)})
+    
+    # Yearly expenses
+    yearly_map = {}
+    for r in records:
+        yr = r.get("date", "")[:4]
+        if yr:
+            yearly_map[yr] = yearly_map.get(yr, 0) + r.get("price", 0)
+    yearly_expenses = sorted(
+        [{"year": y, "amount": round(a, 2)} for y, a in yearly_map.items()],
+        key=lambda x: x["year"]
+    )
+    
+    # Top service categories by spend
+    category_map = {}
+    for r in records:
+        st = r.get("service_type", "Other")
+        category_map[st] = category_map.get(st, 0) + r.get("price", 0)
+    top_categories = sorted(
+        [{"name": k, "amount": round(v, 2)} for k, v in category_map.items()],
+        key=lambda x: x["amount"], reverse=True
+    )[:6]
+    
+    # Current vs previous month
+    cur_month = f"{current_year}-{today.month:02d}"
+    prev_month_num = today.month - 1 if today.month > 1 else 12
+    prev_year = current_year if today.month > 1 else current_year - 1
+    prev_month = f"{prev_year}-{prev_month_num:02d}"
+    
+    cur_month_total = sum(r.get("price", 0) for r in records if r.get("date", "").startswith(cur_month))
+    prev_month_total = sum(r.get("price", 0) for r in records if r.get("date", "").startswith(prev_month))
     
     return {
         "total_vehicles": len(vehicles),
@@ -950,7 +988,12 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         "upcoming_reminders": len(upcoming),
         "recent_services": recent_records,
         "vehicles": vehicles,
-        "reminders": upcoming[:5]
+        "reminders": upcoming[:5],
+        "monthly_expenses": monthly_expenses,
+        "yearly_expenses": yearly_expenses,
+        "top_categories": top_categories,
+        "current_month_spent": round(cur_month_total, 2),
+        "previous_month_spent": round(prev_month_total, 2)
     }
 
 # ==================== ROOT ENDPOINT ====================
