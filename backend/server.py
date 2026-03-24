@@ -596,24 +596,62 @@ async def extract_from_image(
 
 IMPORTANT: A receipt may contain MULTIPLE services. Extract ALL services as separate items.
 
-For each service found, categorize it into one of these types:
-- Oil Change
+For each service found, you MUST categorize it into one of these EXACT service types:
+- Engine Oil Change
+- Oil Filter Replacement
 - Tire Rotation
-- Brake Service
-- Air Filter
-- Transmission Service
-- Coolant Flush
-- Battery Replacement
-- Spark Plugs
 - Wheel Alignment
-- Inspection
+- Tire Balancing
+- Tire Replacement
+- Cabin Air Filter Replacement
+- Engine Air Filter Replacement
+- Spark Plug Replacement
+- Ignition Coil Replacement
+- Brake Pad Replacement
+- Brake Rotor Replacement
+- Brake Caliper Service
+- Brake Fluid Flush
+- Brake Inspection
+- Brake Cleaning and Lubrication
+- Battery Replacement
+- Battery Inspection
+- Battery Terminal Cleaning
+- Alternator Replacement
+- Starter Motor Replacement
+- Engine Coolant Replacement
+- Radiator Repair
+- Water Pump Replacement
+- Transmission Fluid Change
+- Transmission Repair
+- Differential Fluid Change
+- Transfer Case Fluid Change
+- Power Steering Fluid Change
+- AC Refrigerant Recharge
+- AC Compressor Replacement
+- Air Conditioning Service
+- Oxygen Sensor Replacement
+- Mass Airflow Sensor Cleaning
+- Fuel Pump Replacement
+- Fuel Injector Replacement
+- Fuel Injector Cleaning
+- Throttle Body Cleaning
+- Engine Decarbon Service
+- Suspension Repair
+- Shock/Strut Replacement
+- Wheel Bearing Replacement
+- Exhaust System Repair
+- Timing Belt Replacement
+- Drive Belt Replacement
+- Wiper Blade Replacement
+- Engine Diagnostic Service
+- Multi-Point Inspection
 - Other
 
 Return a JSON object with this EXACT structure:
 {
   "services": [
-    {"service_type": "category from list above", "price": number, "notes": "specific description"},
-    {"service_type": "category from list above", "price": number, "notes": "specific description"}
+    {"service_type": "exact type from list above", "price": number, "notes": "specific description from receipt"},
+    {"service_type": "exact type from list above", "price": number, "notes": "specific description from receipt"}
   ],
   "date": "YYYY-MM-DD or null",
   "location": "address or null",
@@ -623,11 +661,19 @@ Return a JSON object with this EXACT structure:
   "raw_text": "brief summary"
 }
 
-Example mappings:
-- "Brake System Flush" -> service_type: "Brake Service"
-- "Cabin Air Filter Replace" -> service_type: "Air Filter"
-- "Battery Terminal Cleaning" -> service_type: "Battery Replacement"
-- "Oil change with tire rotation" -> TWO entries: "Oil Change" AND "Tire Rotation"
+CRITICAL mapping rules:
+- "Brake System Flush" or "Brake Fluid Flush/Replace" -> "Brake Fluid Flush"
+- "Cabin Air Filter" anything -> "Cabin Air Filter Replacement"
+- "Engine Air Filter" anything -> "Engine Air Filter Replacement"
+- "Battery Terminal Cleaning/Corrosion" -> "Battery Terminal Cleaning"
+- "Oil Change" or "Essential Service" with oil -> "Engine Oil Change"
+- "Tire Rotation" -> "Tire Rotation" (separate from oil change even if bundled)
+- "Multi-Point Inspection" or "MPI" -> "Multi-Point Inspection"
+- "Fuel Injector Clean" -> "Fuel Injector Cleaning"
+- "Wheel Alignment" or "Four Wheel Alignment" -> "Wheel Alignment"
+- If a bundled service like "Oil Change with Tire Rotation" appears, split into TWO separate entries
+- Skip $0.00 complimentary items unless they are inspections
+- Use "Other" ONLY if nothing else fits
 
 Extract ALL line items with prices > 0."""
         ).with_model("openai", "gpt-5.2")

@@ -44,7 +44,11 @@ Build a web-based app for tracking car service records. Users should be able to 
 - Google OAuth on custom domain: Requires Emergent Support to whitelist `getservicecheck.com` in OAuth redirect URIs. NOT a code issue.
 - File downloads blocked in preview iframe: Workaround with `window.open()` accepted.
 
+## Service Types
+Comprehensive categorized list with 50+ specific service types replacing the original 11 generic types. Stored as labels (e.g., "Brake Fluid Flush"), organized in categories for dropdown UX. OCR prompt maps receipt items directly to exact labels.
+
 ## Backlog
 - P1: PWA support (Add to Home Screen)
+- P2: Multi-image upload for multi-page receipts
 - P2: Capacitor native app wrapping (iOS/Android)
 - P2: Remove unused `file-saver` dependency

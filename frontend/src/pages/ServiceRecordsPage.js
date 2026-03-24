@@ -19,19 +19,75 @@ import { format } from 'date-fns';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const SERVICE_TYPES = [
-  'Oil Change',
-  'Tire Rotation',
-  'Brake Service',
-  'Air Filter',
-  'Transmission Service',
-  'Coolant Flush',
-  'Battery Replacement',
-  'Spark Plugs',
-  'Wheel Alignment',
-  'Inspection',
-  'Other'
-];
+const SERVICE_TYPES_MAP = {
+  "engine_oil_change": "Engine Oil Change",
+  "oil_filter_replacement": "Oil Filter Replacement",
+  "tire_rotation": "Tire Rotation",
+  "wheel_alignment": "Wheel Alignment",
+  "tire_balance": "Tire Balancing",
+  "tire_replacement": "Tire Replacement",
+  "cabin_air_filter_replacement": "Cabin Air Filter Replacement",
+  "engine_air_filter_replacement": "Engine Air Filter Replacement",
+  "spark_plug_replacement": "Spark Plug Replacement",
+  "ignition_coil_replacement": "Ignition Coil Replacement",
+  "brake_pad_replacement": "Brake Pad Replacement",
+  "brake_rotor_replacement": "Brake Rotor Replacement",
+  "brake_caliper_service": "Brake Caliper Service",
+  "brake_fluid_flush": "Brake Fluid Flush",
+  "brake_inspection": "Brake Inspection",
+  "brake_cleaning_lubrication": "Brake Cleaning and Lubrication",
+  "battery_replacement": "Battery Replacement",
+  "battery_inspection": "Battery Inspection",
+  "battery_terminal_cleaning": "Battery Terminal Cleaning",
+  "alternator_replacement": "Alternator Replacement",
+  "starter_replacement": "Starter Motor Replacement",
+  "engine_coolant_replacement": "Engine Coolant Replacement",
+  "radiator_repair": "Radiator Repair",
+  "water_pump_replacement": "Water Pump Replacement",
+  "transmission_fluid_change": "Transmission Fluid Change",
+  "transmission_repair": "Transmission Repair",
+  "differential_fluid_change": "Differential Fluid Change",
+  "transfer_case_fluid_change": "Transfer Case Fluid Change",
+  "power_steering_fluid_change": "Power Steering Fluid Change",
+  "ac_recharge": "AC Refrigerant Recharge",
+  "ac_compressor_replacement": "AC Compressor Replacement",
+  "ac_service": "Air Conditioning Service",
+  "oxygen_sensor_replacement": "Oxygen Sensor Replacement",
+  "mass_airflow_sensor_cleaning": "Mass Airflow Sensor Cleaning",
+  "fuel_pump_replacement": "Fuel Pump Replacement",
+  "fuel_injector_replacement": "Fuel Injector Replacement",
+  "fuel_injector_cleaning": "Fuel Injector Cleaning",
+  "throttle_body_cleaning": "Throttle Body Cleaning",
+  "engine_decarbon_service": "Engine Decarbon Service",
+  "suspension_repair": "Suspension Repair",
+  "shock_strut_replacement": "Shock/Strut Replacement",
+  "wheel_bearing_replacement": "Wheel Bearing Replacement",
+  "exhaust_repair": "Exhaust System Repair",
+  "timing_belt_replacement": "Timing Belt Replacement",
+  "drive_belt_replacement": "Drive Belt Replacement",
+  "wiper_blade_replacement": "Wiper Blade Replacement",
+  "engine_diagnostic": "Engine Diagnostic Service",
+  "multi_point_inspection": "Multi-Point Inspection",
+  "other": "Other"
+};
+
+const SERVICE_CATEGORIES = {
+  "Oil & Filters": ["engine_oil_change", "oil_filter_replacement", "cabin_air_filter_replacement", "engine_air_filter_replacement"],
+  "Tires & Wheels": ["tire_rotation", "wheel_alignment", "tire_balance", "tire_replacement"],
+  "Brakes": ["brake_pad_replacement", "brake_rotor_replacement", "brake_caliper_service", "brake_fluid_flush", "brake_inspection", "brake_cleaning_lubrication"],
+  "Battery & Electrical": ["battery_replacement", "battery_inspection", "battery_terminal_cleaning", "alternator_replacement", "starter_replacement"],
+  "Engine": ["spark_plug_replacement", "ignition_coil_replacement", "throttle_body_cleaning", "engine_decarbon_service", "engine_diagnostic"],
+  "Cooling": ["engine_coolant_replacement", "radiator_repair", "water_pump_replacement"],
+  "Transmission & Drivetrain": ["transmission_fluid_change", "transmission_repair", "differential_fluid_change", "transfer_case_fluid_change", "power_steering_fluid_change"],
+  "AC & Climate": ["ac_recharge", "ac_compressor_replacement", "ac_service"],
+  "Fuel System": ["fuel_pump_replacement", "fuel_injector_replacement", "fuel_injector_cleaning"],
+  "Sensors": ["oxygen_sensor_replacement", "mass_airflow_sensor_cleaning"],
+  "Suspension & Steering": ["suspension_repair", "shock_strut_replacement", "wheel_bearing_replacement"],
+  "Belts & Exhaust": ["timing_belt_replacement", "drive_belt_replacement", "exhaust_repair"],
+  "Other": ["wiper_blade_replacement", "multi_point_inspection", "other"]
+};
+
+const SERVICE_TYPE_LABELS = Object.values(SERVICE_TYPES_MAP);
 
 const ServiceRecordsPage = () => {
   const [records, setRecords] = useState([]);
@@ -156,19 +212,15 @@ const ServiceRecordsPage = () => {
       
       // Check if multiple services extracted
       if (data.services && data.services.length > 0) {
-        // Map service types to valid dropdown options
         const mappedServices = data.services.map(svc => {
-          const matchedType = SERVICE_TYPES.find(t => 
-            t.toLowerCase() === svc.service_type.toLowerCase() ||
-            svc.service_type.toLowerCase().includes(t.toLowerCase()) ||
-            t.toLowerCase().includes(svc.service_type.toLowerCase().split(' ')[0])
-          ) || 'Other';
+          // Check if OCR returned a valid service type label
+          const isValidType = SERVICE_TYPE_LABELS.includes(svc.service_type);
           
           return {
             ...svc,
-            service_type: matchedType,
+            service_type: isValidType ? svc.service_type : 'Other',
             original_type: svc.service_type,
-            selected: svc.price > 0 // Auto-select services with price > 0
+            selected: svc.price > 0
           };
         });
         
@@ -573,9 +625,14 @@ const ServiceRecordsPage = () => {
                     <SelectTrigger className="rounded-sm" data-testid="service-type-select">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {SERVICE_TYPES.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                    <SelectContent className="max-h-64">
+                      {Object.entries(SERVICE_CATEGORIES).map(([category, keys]) => (
+                        <div key={category}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{category}</div>
+                          {keys.map(key => (
+                            <SelectItem key={key} value={SERVICE_TYPES_MAP[key]}>{SERVICE_TYPES_MAP[key]}</SelectItem>
+                          ))}
+                        </div>
                       ))}
                     </SelectContent>
                   </Select>
