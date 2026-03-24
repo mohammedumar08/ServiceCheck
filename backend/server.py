@@ -171,6 +171,8 @@ class OCRServiceItem(BaseModel):
     service_type: str
     price: float
     notes: Optional[str] = None
+    is_bundled: bool = False
+    bundle_total: Optional[float] = None
 
 class OCRMultipleServicesData(BaseModel):
     services: List[OCRServiceItem] = []
@@ -700,6 +702,14 @@ Extract ALL line items with prices > 0."""
                             price=float(svc["price"]),
                             notes=svc.get("notes")
                         ))
+                
+                # Detect bundled services: multiple services sharing the exact same price > 0
+                from collections import Counter
+                price_counts = Counter(s.price for s in services if s.price > 0)
+                for svc in services:
+                    if svc.price > 0 and price_counts[svc.price] > 1:
+                        svc.is_bundled = True
+                        svc.bundle_total = svc.price
                 
                 return OCRMultipleServicesData(
                     services=services,
