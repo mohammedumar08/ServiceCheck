@@ -668,12 +668,12 @@ CRITICAL mapping rules:
 - "Cabin Air Filter" anything -> "Cabin Air Filter Replacement"
 - "Engine Air Filter" anything -> "Engine Air Filter Replacement"
 - "Battery Terminal Cleaning/Corrosion" -> "Battery Terminal Cleaning"
-- "Oil Change" or "Essential Service" with oil -> "Engine Oil Change"
+- "Oil Change" or "Essential Service" with oil -> "Engine Oil Change". Oil filter replacement is ALWAYS part of an oil change — do NOT create a separate "Oil Filter Replacement" entry when an oil change is present. Include it in the oil change notes instead.
 - "Multi-Point Inspection" or "MPI" -> "Multi-Point Inspection"
 - "Fuel Injector Clean" -> "Fuel Injector Cleaning"
 - "Wheel Alignment" or "Four Wheel Alignment" -> "Wheel Alignment"
-- BUNDLED SERVICES: If a single line item bundles multiple services (e.g., "Oil Change with Tire Rotation" for $160), split them into SEPARATE entries in the services array. Each entry MUST include: "is_bundled": true and "bundle_total": <the original total price>. Set each entry's "price" to the full bundle_total (the frontend will handle division). Example: "Oil Change with Tire Rotation $160" becomes TWO entries: {"service_type": "Engine Oil Change", "price": 160, "is_bundled": true, "bundle_total": 160, "notes": "Part of: Oil Change with Tire Rotation"} and {"service_type": "Tire Rotation", "price": 160, "is_bundled": true, "bundle_total": 160, "notes": "Part of: Oil Change with Tire Rotation"}
-- Skip $0.00 complimentary items unless they are inspections
+- BUNDLED SERVICES: If a single line item bundles multiple services (e.g., "Oil Change with Tire Rotation" for $160), split into SEPARATE entries. Only create entries for distinct service categories — e.g., "Engine Oil Change" and "Tire Rotation" are 2 entries. Do NOT count sub-parts like oil filter, gasket, washer fluid as separate services. Set each entry's "price" to the full line item total.
+- Items marked (N/C), "No Charge", or "Complimentary" with $0.00 total should have price: 0
 - Use "Other" ONLY if nothing else fits
 
 Extract ALL line items with prices > 0."""
