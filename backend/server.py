@@ -667,11 +667,10 @@ CRITICAL mapping rules:
 - "Engine Air Filter" anything -> "Engine Air Filter Replacement"
 - "Battery Terminal Cleaning/Corrosion" -> "Battery Terminal Cleaning"
 - "Oil Change" or "Essential Service" with oil -> "Engine Oil Change"
-- "Tire Rotation" -> "Tire Rotation" (separate from oil change even if bundled)
 - "Multi-Point Inspection" or "MPI" -> "Multi-Point Inspection"
 - "Fuel Injector Clean" -> "Fuel Injector Cleaning"
 - "Wheel Alignment" or "Four Wheel Alignment" -> "Wheel Alignment"
-- If a bundled service like "Oil Change with Tire Rotation" appears, split into TWO separate entries
+- BUNDLED SERVICES: If a single line item bundles multiple services (e.g., "Oil Change with Tire Rotation" for $160), do NOT split into separate entries. Keep it as ONE entry using the primary service type (e.g., "Engine Oil Change") with the full price, and list the bundled services in the "notes" field (e.g., "Includes Tire Rotation"). NEVER duplicate the price across multiple entries.
 - Skip $0.00 complimentary items unless they are inspections
 - Use "Other" ONLY if nothing else fits
 
