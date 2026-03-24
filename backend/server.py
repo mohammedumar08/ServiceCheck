@@ -670,7 +670,7 @@ CRITICAL mapping rules:
 - "Multi-Point Inspection" or "MPI" -> "Multi-Point Inspection"
 - "Fuel Injector Clean" -> "Fuel Injector Cleaning"
 - "Wheel Alignment" or "Four Wheel Alignment" -> "Wheel Alignment"
-- BUNDLED SERVICES: If a single line item bundles multiple services (e.g., "Oil Change with Tire Rotation" for $160), do NOT split into separate entries. Keep it as ONE entry using the primary service type (e.g., "Engine Oil Change") with the full price, and list the bundled services in the "notes" field (e.g., "Includes Tire Rotation"). NEVER duplicate the price across multiple entries.
+- BUNDLED SERVICES: If a single line item bundles multiple services (e.g., "Oil Change with Tire Rotation" for $160), split them into SEPARATE entries in the services array. Each entry MUST include: "is_bundled": true and "bundle_total": <the original total price>. Set each entry's "price" to the full bundle_total (the frontend will handle division). Example: "Oil Change with Tire Rotation $160" becomes TWO entries: {"service_type": "Engine Oil Change", "price": 160, "is_bundled": true, "bundle_total": 160, "notes": "Part of: Oil Change with Tire Rotation"} and {"service_type": "Tire Rotation", "price": 160, "is_bundled": true, "bundle_total": 160, "notes": "Part of: Oil Change with Tire Rotation"}
 - Skip $0.00 complimentary items unless they are inspections
 - Use "Other" ONLY if nothing else fits
 

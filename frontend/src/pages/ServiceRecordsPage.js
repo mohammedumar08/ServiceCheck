@@ -113,6 +113,8 @@ const ServiceRecordsPage = () => {
   const [extractedServices, setExtractedServices] = useState([]);
   const [showExtractedDialog, setShowExtractedDialog] = useState(false);
   const [extractedMeta, setExtractedMeta] = useState({});
+  const [bundleMode, setBundleMode] = useState('split');
+  const [hasBundledServices, setHasBundledServices] = useState(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { getAuthHeader, token } = useAuth();
@@ -213,17 +215,21 @@ const ServiceRecordsPage = () => {
       // Check if multiple services extracted
       if (data.services && data.services.length > 0) {
         const mappedServices = data.services.map(svc => {
-          // Check if OCR returned a valid service type label
           const isValidType = SERVICE_TYPE_LABELS.includes(svc.service_type);
           
           return {
             ...svc,
             service_type: isValidType ? svc.service_type : 'Other',
             original_type: svc.service_type,
+            is_bundled: svc.is_bundled || false,
+            bundle_total: svc.bundle_total || svc.price,
             selected: svc.price > 0
           };
         });
         
+        const hasBundle = mappedServices.some(s => s.is_bundled);
+        setHasBundledServices(hasBundle);
+        setBundleMode('split');
         setExtractedServices(mappedServices);
         setExtractedMeta({
           date: data.date,
@@ -256,9 +262,33 @@ const ServiceRecordsPage = () => {
   };
 
   const handleAddExtractedServices = async () => {
-    const selectedServices = extractedServices.filter(s => s.selected && s.price > 0);
+    let servicesToAdd = extractedServices.filter(s => s.selected && s.price > 0);
     
-    if (selectedServices.length === 0) {
+    if (bundleMode === 'single' && hasBundledServices) {
+      // Group bundled services — keep only first entry per bundle with full price
+      const seen = new Set();
+      servicesToAdd = servicesToAdd.filter(s => {
+        if (!s.is_bundled) return true;
+        const key = s.bundle_total;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).map(s => {
+        if (!s.is_bundled) return s;
+        const bundled = extractedServices.filter(b => b.is_bundled && b.bundle_total === s.bundle_total && b !== s);
+        const bundledNames = bundled.map(b => b.service_type).join(', ');
+        return { ...s, price: s.bundle_total, notes: bundledNames ? `Includes ${bundledNames}` : s.notes };
+      });
+    } else if (bundleMode === 'split' && hasBundledServices) {
+      // Split bundled services — divide price by count
+      servicesToAdd = servicesToAdd.map(s => {
+        if (!s.is_bundled) return s;
+        const bundleCount = extractedServices.filter(b => b.is_bundled && b.bundle_total === s.bundle_total).length;
+        return { ...s, price: Math.round((s.bundle_total / bundleCount) * 100) / 100 };
+      });
+    }
+    
+    if (servicesToAdd.length === 0) {
       toast.error('Please select at least one service');
       return;
     }
@@ -276,7 +306,7 @@ const ServiceRecordsPage = () => {
     setSubmitting(true);
     let addedCount = 0;
     
-    for (const service of selectedServices) {
+    for (const service of servicesToAdd) {
       try {
         const submitData = {
           vehicle_id: formData.vehicle_id,
@@ -848,41 +878,108 @@ const ServiceRecordsPage = () => {
                 </div>
               )}
 
+              {/* Bundle Mode Toggle */}
+              {hasBundledServices && (
+                <div className="p-3 bg-muted/50 rounded-sm space-y-2">
+                  <Label className="text-sm font-semibold">Bundled services detected — how to handle pricing?</Label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer text-sm" data-testid="bundle-mode-split">
+                      <input
+                        type="radio"
+                        name="bundleMode"
+                        checked={bundleMode === 'split'}
+                        onChange={() => setBundleMode('split')}
+                        className="h-4 w-4"
+                      />
+                      <span>Split entries <span className="text-muted-foreground">(cost divided equally)</span></span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm" data-testid="bundle-mode-single">
+                      <input
+                        type="radio"
+                        name="bundleMode"
+                        checked={bundleMode === 'single'}
+                        onChange={() => setBundleMode('single')}
+                        className="h-4 w-4"
+                      />
+                      <span>Single entry <span className="text-muted-foreground">(full price, primary service)</span></span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Services List */}
               <div className="space-y-2">
                 <Label>Services Found</Label>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {extractedServices.map((service, index) => (
-                    <div 
-                      key={index}
-                      onClick={() => toggleServiceSelection(index)}
-                      className={`p-3 rounded-sm border cursor-pointer transition-colors ${
-                        service.selected 
-                          ? 'border-primary bg-primary/5' 
-                          : 'border-border hover:border-muted-foreground'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="checkbox" 
-                            checked={service.selected}
-                            onChange={() => {}}
-                            className="h-4 w-4 rounded"
-                          />
-                          <div>
-                            <p className="font-medium">{service.service_type}</p>
-                            {service.notes && (
-                              <p className="text-xs text-muted-foreground">{service.notes}</p>
-                            )}
+                  {(() => {
+                    let displayServices = extractedServices;
+                    
+                    if (bundleMode === 'single' && hasBundledServices) {
+                      const seen = new Set();
+                      displayServices = extractedServices.filter(s => {
+                        if (!s.is_bundled) return true;
+                        const key = s.bundle_total;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      });
+                    }
+                    
+                    return displayServices.map((service, index) => {
+                      let displayPrice = service.price;
+                      let displayNotes = service.notes;
+                      
+                      if (service.is_bundled && bundleMode === 'split') {
+                        const bundleCount = extractedServices.filter(b => b.is_bundled && b.bundle_total === service.bundle_total).length;
+                        displayPrice = Math.round((service.bundle_total / bundleCount) * 100) / 100;
+                      } else if (service.is_bundled && bundleMode === 'single') {
+                        displayPrice = service.bundle_total;
+                        const bundled = extractedServices.filter(b => b.is_bundled && b.bundle_total === service.bundle_total && b !== service);
+                        if (bundled.length > 0) {
+                          displayNotes = `Includes ${bundled.map(b => b.service_type).join(', ')}`;
+                        }
+                      }
+                      
+                      const origIndex = extractedServices.indexOf(service);
+                      
+                      return (
+                        <div 
+                          key={origIndex}
+                          onClick={() => toggleServiceSelection(origIndex)}
+                          className={`p-3 rounded-sm border cursor-pointer transition-colors ${
+                            service.selected 
+                              ? 'border-primary bg-primary/5' 
+                              : 'border-border hover:border-muted-foreground'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <input 
+                                type="checkbox" 
+                                checked={service.selected}
+                                onChange={() => {}}
+                                className="h-4 w-4 rounded"
+                              />
+                              <div>
+                                <p className="font-medium">
+                                  {service.service_type}
+                                  {service.is_bundled && (
+                                    <span className="ml-2 text-xs px-1.5 py-0.5 bg-muted rounded text-muted-foreground">bundled</span>
+                                  )}
+                                </p>
+                                {displayNotes && (
+                                  <p className="text-xs text-muted-foreground">{displayNotes}</p>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`font-mono font-bold ${displayPrice > 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                              ${displayPrice.toFixed(2)}
+                            </span>
                           </div>
                         </div>
-                        <span className={`font-mono font-bold ${service.price > 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-                          ${service.price.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>
