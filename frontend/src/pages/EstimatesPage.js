@@ -19,7 +19,12 @@ const EstimatesPage = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOption, setSelectedOption] = useState('');
+  // Cascading dropdowns
+  const [pickerMode, setPickerMode] = useState(''); // 'garage' or 'manual'
+  const [garageVehicleId, setGarageVehicleId] = useState('');
+  const [selMake, setSelMake] = useState('');
+  const [selModel, setSelModel] = useState('');
+  const [selYear, setSelYear] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [supportedVehicles, setSupportedVehicles] = useState([]);
@@ -48,44 +53,22 @@ const EstimatesPage = () => {
     }
   };
 
-  // Build unified options: garage matches first, then supported combos
-  const buildOptions = () => {
-    const options = [];
-    const supportedSet = new Set(
-      supportedVehicles.map((sv) => `${sv.make}|${sv.model}|${sv.year}`)
-    );
+  // Derived lists for cascading dropdowns
+  const supportedSet = new Set(supportedVehicles.map((sv) => `${sv.make}|${sv.model}|${sv.year}`));
+  const garageSupported = garageVehicles.filter((v) => supportedSet.has(`${v.make}|${v.model}|${v.year}`));
+  const makes = [...new Set(supportedVehicles.map((sv) => sv.make))].sort();
+  const models = selMake ? [...new Set(supportedVehicles.filter((sv) => sv.make === selMake).map((sv) => sv.model))].sort() : [];
+  const years = (selMake && selModel) ? [...new Set(supportedVehicles.filter((sv) => sv.make === selMake && sv.model === selModel).map((sv) => String(sv.year)))].sort() : [];
 
-    // Garage vehicles that match a supported combo
-    garageVehicles.forEach((v) => {
-      const key = `${v.make}|${v.model}|${v.year}`;
-      if (supportedSet.has(key)) {
-        options.push({
-          value: `garage:${v.id}:${v.make}:${v.model}:${v.year}`,
-          label: `${v.year} ${v.make} ${v.model}`,
-          group: 'garage',
-        });
-      }
-    });
-
-    // All supported combos (always shown so user can pick even without garage)
-    supportedVehicles.forEach((sv) => {
-      options.push({
-        value: `supported:${sv.make}:${sv.model}:${sv.year}`,
-        label: `${sv.year} ${sv.make} ${sv.model}`,
-        group: 'supported',
-      });
-    });
-
-    return options;
-  };
-
-  const parseSelection = () => {
-    if (!selectedOption) return null;
-    const parts = selectedOption.split(':');
-    if (parts[0] === 'garage') {
-      return { make: parts[2], model: parts[3], year: parseInt(parts[4]) };
+  const getSelection = () => {
+    if (pickerMode === 'garage' && garageVehicleId) {
+      const v = garageVehicles.find((g) => g.id === garageVehicleId);
+      return v ? { make: v.make, model: v.model, year: v.year } : null;
     }
-    return { make: parts[1], model: parts[2], year: parseInt(parts[3]) };
+    if (selMake && selModel && selYear) {
+      return { make: selMake, model: selModel, year: parseInt(selYear) };
+    }
+    return null;
   };
 
   const handleFileSelect = (e) => {
@@ -96,7 +79,7 @@ const EstimatesPage = () => {
   };
 
   const handleUpload = async () => {
-    const selection = parseSelection();
+    const selection = getSelection();
     if (!selectedFile || !selection) {
       toast.error('Please select a vehicle and upload a file');
       return;
@@ -127,7 +110,11 @@ const EstimatesPage = () => {
   const resetDialog = () => {
     setSelectedFile(null);
     setPreviewUrl(null);
-    setSelectedOption('');
+    setPickerMode('');
+    setGarageVehicleId('');
+    setSelMake('');
+    setSelModel('');
+    setSelYear('');
   };
 
   const handleDelete = async (e, estimateId) => {
@@ -141,9 +128,7 @@ const EstimatesPage = () => {
     }
   };
 
-  const options = buildOptions();
-  const garageOptions = options.filter((o) => o.group === 'garage');
-  const supportedOptions = options.filter((o) => o.group === 'supported');
+  const isReady = !!getSelection();
 
   if (loading) {
     return (
@@ -249,33 +234,95 @@ const EstimatesPage = () => {
               <DialogDescription>Select the vehicle and upload a mechanic's quote for analysis.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              {/* Vehicle Picker */}
-              <div>
-                <label className="text-sm font-medium mb-1.5 block">Vehicle</label>
-                <Select value={selectedOption} onValueChange={setSelectedOption} disabled={uploading}>
-                  <SelectTrigger data-testid="estimate-vehicle-select" className="rounded-sm">
-                    <SelectValue placeholder="Select vehicle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {garageOptions.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">From My Garage</div>
-                        {garageOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                        <div className="my-1 border-t border-border" />
-                      </>
-                    )}
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">Supported Models</div>
-                    {supportedOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Supported: {supportedVehicles.map((sv) => `${sv.year} ${sv.make} ${sv.model}`).join(', ')}
-                </p>
-              </div>
+              {/* Source toggle: Garage or Manual */}
+              {garageSupported.length > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    variant={pickerMode === 'garage' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1 rounded-sm text-xs"
+                    onClick={() => { setPickerMode('garage'); setSelMake(''); setSelModel(''); setSelYear(''); }}
+                    disabled={uploading}
+                    data-testid="picker-garage-btn"
+                  >
+                    <Car className="mr-1.5 h-3.5 w-3.5" /> From My Garage
+                  </Button>
+                  <Button
+                    variant={pickerMode === 'manual' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1 rounded-sm text-xs"
+                    onClick={() => { setPickerMode('manual'); setGarageVehicleId(''); }}
+                    disabled={uploading}
+                    data-testid="picker-manual-btn"
+                  >
+                    Select Manually
+                  </Button>
+                </div>
+              )}
+
+              {/* Garage picker */}
+              {(pickerMode === 'garage' && garageSupported.length > 0) && (
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Vehicle</label>
+                  <Select value={garageVehicleId} onValueChange={setGarageVehicleId} disabled={uploading}>
+                    <SelectTrigger data-testid="estimate-garage-select" className="rounded-sm">
+                      <SelectValue placeholder="Select from garage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {garageSupported.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Cascading Make -> Model -> Year */}
+              {(pickerMode === 'manual' || (pickerMode === '' && garageSupported.length === 0)) && (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Make</label>
+                      <Select value={selMake} onValueChange={(v) => { setSelMake(v); setSelModel(''); setSelYear(''); }} disabled={uploading}>
+                        <SelectTrigger data-testid="estimate-make-select" className="rounded-sm">
+                          <SelectValue placeholder="Make" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {makes.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Model</label>
+                      <Select value={selModel} onValueChange={(v) => { setSelModel(v); setSelYear(''); }} disabled={uploading || !selMake}>
+                        <SelectTrigger data-testid="estimate-model-select" className="rounded-sm">
+                          <SelectValue placeholder="Model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {models.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Year</label>
+                      <Select value={selYear} onValueChange={setSelYear} disabled={uploading || !selModel}>
+                        <SelectTrigger data-testid="estimate-year-select" className="rounded-sm">
+                          <SelectValue placeholder="Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {years.map((y) => (
+                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* File Picker */}
               <div>
@@ -308,7 +355,7 @@ const EstimatesPage = () => {
               <Button
                 className="w-full rounded-sm font-heading font-bold uppercase tracking-wider"
                 onClick={handleUpload}
-                disabled={uploading || !selectedFile || !selectedOption}
+                disabled={uploading || !selectedFile || !isReady}
                 data-testid="submit-estimate-btn"
               >
                 {uploading ? (
