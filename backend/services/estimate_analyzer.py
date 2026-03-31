@@ -192,7 +192,7 @@ async def get_classification(db, service_key: str):
             "description": None,
             "default_recommendation_code": "cannot_determine",
             "recommendation_text": "Service could not be identified.",
-            "user_explanation": "Review manually.",
+            "user_explanation": "Review manually or improve synonym mapping.",
             "severity": "low",
         }
 
@@ -206,7 +206,7 @@ async def get_classification(db, service_key: str):
             "description": None,
             "default_recommendation_code": "cannot_determine",
             "recommendation_text": "Service could not be identified.",
-            "user_explanation": "Review manually.",
+            "user_explanation": "Review manually or improve synonym mapping.",
             "severity": "low",
         }
 

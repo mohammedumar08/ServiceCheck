@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from pydantic import BaseModel
 from emergentintegrations.llm.chat import UserMessage, ImageContent
 
-from services.estimate_analyzer import analyze_estimate_item
+from services.estimate_analyzer import analyze_estimate_item, deep_normalize, match_service_key, get_classification
 
 router = APIRouter(prefix="/estimates", tags=["estimates"])
 
@@ -344,4 +344,44 @@ def _build_summary(items: list) -> dict:
         "required_total": round(sum(i.get("quoted_price", 0) for i in items if i.get("category") == "required"), 2),
         "conditional_total": round(sum(i.get("quoted_price", 0) for i in items if i.get("category") == "conditional"), 2),
         "not_required_total": round(sum(i.get("quoted_price", 0) for i in items if i.get("category") == "not_required"), 2)
+    }
+
+
+class DebugMatchRequest(BaseModel):
+    input_line_text: str
+    vehicle_make: str = "Toyota"
+    vehicle_model: str = "Camry"
+    vehicle_year: int = 2020
+
+
+@router.post("/debug/match")
+async def debug_match_line(body: DebugMatchRequest, current_user: dict = Depends(get_user)):
+    """Debug endpoint: paste a dealer line item and see exactly how the matcher processes it."""
+    raw = body.input_line_text
+    normalized = deep_normalize(raw)
+    match = await match_service_key(db, raw)
+    classification = await get_classification(db, match["service_key"])
+
+    vehicle = {"make": body.vehicle_make, "model": body.vehicle_model, "year": body.vehicle_year}
+    full_analysis = await analyze_estimate_item(db, raw, 0.0, vehicle)
+
+    return {
+        "input_line_text": raw,
+        "normalized_text": normalized,
+        "match": {
+            "service_key": match["service_key"],
+            "matched_synonym": match["matched_synonym"],
+            "match_strategy": match["match_strategy"],
+            "confidence": match["confidence"],
+        },
+        "classification": {
+            "display_name": classification.get("display_name"),
+            "category": classification["category"],
+            "severity": classification["severity"],
+            "default_recommendation_code": classification["default_recommendation_code"],
+            "recommendation_text": classification.get("recommendation_text"),
+            "user_explanation": classification.get("user_explanation"),
+            "description": classification.get("description"),
+        },
+        "full_analysis": full_analysis,
     }

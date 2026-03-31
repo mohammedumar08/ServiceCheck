@@ -13,6 +13,7 @@ import RemindersPage from "./pages/RemindersPage";
 import ExportPage from "./pages/ExportPage";
 import EstimatesPage from "./pages/EstimatesPage";
 import EstimateDetailPage from "./pages/EstimateDetailPage";
+import MatchDebugPage from "./pages/MatchDebugPage";
 import "./App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -78,6 +79,7 @@ const AppRouter = () => {
       <Route path="/export" element={<ProtectedRoute><ExportPage /></ProtectedRoute>} />
       <Route path="/estimates" element={<ProtectedRoute><EstimatesPage /></ProtectedRoute>} />
       <Route path="/estimates/:id" element={<ProtectedRoute><EstimateDetailPage /></ProtectedRoute>} />
+      <Route path="/match-debug" element={<ProtectedRoute><MatchDebugPage /></ProtectedRoute>} />
     </Routes>
   );
 };
