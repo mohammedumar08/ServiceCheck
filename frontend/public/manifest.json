@@ -1,0 +1,26 @@
+{
+  "short_name": "ServiceCheck",
+  "name": "GetServiceCheck - Vehicle Service Tracker",
+  "description": "Upload a mechanic estimate and instantly see which repairs are required, conditional, or optional. Track service records and manage maintenance for all your vehicles.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["auto", "utilities"]
+}

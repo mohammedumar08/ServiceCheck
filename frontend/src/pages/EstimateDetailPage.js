@@ -394,7 +394,7 @@ const EstimateDetailPage = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              {vehicles.length > 0 && (
+              {vehicles.filter((v) => v.make === estimate.make && v.model === estimate.model).length > 0 && (
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Use existing vehicle</label>
                   <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId} disabled={converting}>
@@ -402,7 +402,7 @@ const EstimateDetailPage = () => {
                       <SelectValue placeholder="Select a vehicle" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vehicles.map((v) => (
+                      {vehicles.filter((v) => v.make === estimate.make && v.model === estimate.model).map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.year} {v.make} {v.model}
                         </SelectItem>
