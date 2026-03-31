@@ -32,6 +32,7 @@ const EstimatesPage = () => {
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [supportedVehicles, setSupportedVehicles] = useState([]);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { getAuthHeader } = useAuth();
@@ -43,12 +44,14 @@ const EstimatesPage = () => {
 
   const fetchData = async () => {
     try {
-      const [estRes, vehRes] = await Promise.all([
+      const [estRes, vehRes, supRes] = await Promise.all([
         axios.get(`${API_URL}/estimates`, getAuthHeader()),
         axios.get(`${API_URL}/vehicles`, getAuthHeader()),
+        axios.get(`${API_URL}/estimates/supported-vehicles`, getAuthHeader()),
       ]);
       setEstimates(estRes.data.estimates || []);
       setVehicles(vehRes.data || []);
+      setSupportedVehicles(supRes.data.supported_vehicles || []);
     } catch (err) {
       toast.error('Failed to load data');
     } finally {
@@ -248,13 +251,24 @@ const EstimatesPage = () => {
                     <SelectValue placeholder="Select a vehicle" />
                   </SelectTrigger>
                   <SelectContent>
-                    {vehicles.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.year} {v.make} {v.model}
-                      </SelectItem>
-                    ))}
+                    {vehicles.map((v) => {
+                      const isSupported = supportedVehicles.some(
+                        (sv) => sv.make === v.make && sv.model === v.model
+                      );
+                      return (
+                        <SelectItem key={v.id} value={v.id} disabled={!isSupported}>
+                          {v.year} {v.make} {v.model}
+                          {!isSupported && ' (not supported)'}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
+                {vehicles.length > 0 && !vehicles.some((v) => supportedVehicles.some((sv) => sv.make === v.make && sv.model === v.model)) && (
+                  <p className="text-xs text-amber-400 mt-1.5">
+                    Estimate Checker currently supports Mazda CX-5 only. Add a Mazda CX-5 vehicle to use this feature.
+                  </p>
+                )}
               </div>
 
               <div>

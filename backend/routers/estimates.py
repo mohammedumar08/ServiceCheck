@@ -44,6 +44,19 @@ class EstimateItemUpdate(BaseModel):
     recommendation: Optional[str] = None
 
 
+@router.get("/supported-vehicles")
+async def get_supported_vehicles(current_user: dict = Depends(get_user)):
+    """Return the list of make/model combos that have maintenance schedule data."""
+    pipeline = [
+        {"$match": {"is_active": True}},
+        {"$group": {"_id": {"make": "$make", "model": "$model"}}},
+        {"$sort": {"_id.make": 1, "_id.model": 1}},
+    ]
+    results = await db.maintenance_schedule_rules.aggregate(pipeline).to_list(200)
+    supported = [{"make": r["_id"]["make"], "model": r["_id"]["model"]} for r in results]
+    return {"supported_vehicles": supported}
+
+
 # --- OCR Extraction ---
 async def extract_estimate_via_ocr(file_bytes: bytes, content_type: str, filename: str) -> dict:
     """Use GPT-5.2 vision to extract line items from an estimate image/PDF."""
@@ -133,6 +146,19 @@ async def create_estimate(
     )
     if not vehicle:
         raise HTTPException(404, "Vehicle not found")
+
+    # Check if vehicle make/model is supported for estimate analysis
+    supported_count = await db.maintenance_schedule_rules.count_documents({
+        "make": vehicle.get("make", ""),
+        "model": vehicle.get("model", ""),
+        "is_active": True
+    })
+    if supported_count == 0:
+        raise HTTPException(
+            400,
+            f"Estimate Checker is not yet supported for {vehicle.get('make')} {vehicle.get('model')}. "
+            f"Currently supported: Mazda CX-5."
+        )
 
     # Extract via OCR
     ocr_data = await extract_estimate_via_ocr(file_bytes, file.content_type, file.filename)
