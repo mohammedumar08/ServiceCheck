@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, FileSearch, CheckCircle2, AlertTriangle, HelpCircle, XCircle,
-  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2, ShieldCheck, ShieldAlert, ShieldQuestion
+  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2, ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -40,6 +42,9 @@ const EstimateDetailPage = () => {
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [converting, setConverting] = useState(false);
   const [expandedItem, setExpandedItem] = useState(null);
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
 
   useEffect(() => {
     fetchEstimate();
@@ -47,8 +52,12 @@ const EstimateDetailPage = () => {
 
   const fetchEstimate = async () => {
     try {
-      const res = await axios.get(`${API_URL}/estimates/${id}`, getAuthHeader());
-      setData(res.data);
+      const [estRes, vehRes] = await Promise.all([
+        axios.get(`${API_URL}/estimates/${id}`, getAuthHeader()),
+        axios.get(`${API_URL}/vehicles`, getAuthHeader()),
+      ]);
+      setData(estRes.data);
+      setVehicles(vehRes.data || []);
     } catch (err) {
       toast.error('Failed to load estimate');
       navigate('/estimates');
@@ -75,26 +84,49 @@ const EstimateDetailPage = () => {
     }
   };
 
-  const handleConvert = async () => {
+  const handleConvert = async (createVehicle = false) => {
     if (selectedItems.size === 0) {
       toast.error('Select at least one item');
       return;
     }
     setConverting(true);
     try {
+      const payload = {
+        item_ids: Array.from(selectedItems),
+        vehicle_id: selectedVehicleId || null,
+        create_vehicle: createVehicle,
+      };
       await axios.post(
         `${API_URL}/estimates/${id}/convert`,
-        { item_ids: Array.from(selectedItems) },
+        payload,
         getAuthHeader()
       );
       toast.success(`${selectedItems.size} item(s) converted to service records`);
       setSelectedItems(new Set());
+      setShowConvertDialog(false);
+      setSelectedVehicleId('');
       fetchEstimate();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to convert items');
     } finally {
       setConverting(false);
     }
+  };
+
+  const openConvertFlow = () => {
+    if (selectedItems.size === 0) {
+      toast.error('Select at least one item');
+      return;
+    }
+    // Check if user has a matching vehicle
+    const est = data?.estimate;
+    const matchingVehicle = vehicles.find(
+      (v) => v.make === est?.make && v.model === est?.model
+    );
+    if (matchingVehicle) {
+      setSelectedVehicleId(matchingVehicle.id);
+    }
+    setShowConvertDialog(true);
   };
 
   if (loading) {
@@ -202,7 +234,7 @@ const EstimateDetailPage = () => {
                 <Button
                   size="sm"
                   className="rounded-sm font-heading font-bold uppercase tracking-wider"
-                  onClick={handleConvert}
+                  onClick={openConvertFlow}
                   disabled={converting || selectedItems.size === 0}
                   data-testid="convert-items-btn"
                 >
@@ -351,6 +383,68 @@ const EstimateDetailPage = () => {
             );
           })}
         </div>
+
+        {/* Convert to Service Record Dialog */}
+        <Dialog open={showConvertDialog} onOpenChange={(open) => { if (!converting) setShowConvertDialog(open); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-heading font-bold">Save as Service Records</DialogTitle>
+              <DialogDescription>
+                Choose where to save {selectedItems.size} item(s) for <strong>{estimate.vehicle_info}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              {vehicles.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Use existing vehicle</label>
+                  <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId} disabled={converting}>
+                    <SelectTrigger data-testid="convert-vehicle-select" className="rounded-sm">
+                      <SelectValue placeholder="Select a vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.year} {v.make} {v.model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {selectedVehicleId && (
+                <Button
+                  className="w-full rounded-sm font-heading font-bold uppercase tracking-wider"
+                  onClick={() => handleConvert(false)}
+                  disabled={converting}
+                  data-testid="convert-existing-btn"
+                >
+                  {converting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+                  Convert to Selected Vehicle
+                </Button>
+              )}
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">or</span></div>
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full rounded-sm"
+                onClick={() => handleConvert(true)}
+                disabled={converting}
+                data-testid="convert-create-vehicle-btn"
+              >
+                {converting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                Add "{estimate.vehicle_info}" to My Garage & Convert
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                This will add {estimate.vehicle_info} to your vehicles and save the selected items as service records.
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

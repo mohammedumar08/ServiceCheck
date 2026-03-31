@@ -128,7 +128,9 @@ IMPORTANT: Do NOT include summary lines like "Total", "Subtotal", "Tax", "Grand 
 @router.post("")
 async def create_estimate(
     file: UploadFile = File(...),
-    vehicle_id: str = Form(...),
+    make: str = Form(...),
+    model: str = Form(...),
+    year: int = Form(2020),
     current_user: dict = Depends(get_user)
 ):
     # Validate file
@@ -140,25 +142,17 @@ async def create_estimate(
     if len(file_bytes) > 20 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 20MB)")
 
-    # Get vehicle
-    vehicle = await db.vehicles.find_one(
-        {"id": vehicle_id, "user_id": current_user["id"]}, {"_id": 0}
-    )
-    if not vehicle:
-        raise HTTPException(404, "Vehicle not found")
-
-    # Check if vehicle make/model is supported for estimate analysis
+    # Check if make/model is supported
     supported_count = await db.maintenance_schedule_rules.count_documents({
-        "make": vehicle.get("make", ""),
-        "model": vehicle.get("model", ""),
-        "is_active": True
+        "make": make, "model": model, "is_active": True
     })
     if supported_count == 0:
         raise HTTPException(
             400,
-            f"Estimate Checker is not yet supported for {vehicle.get('make')} {vehicle.get('model')}. "
-            f"Currently supported: Mazda CX-5."
+            f"Estimate Checker is not yet supported for {make} {model}. Currently supported: Mazda CX-5."
         )
+
+    vehicle = {"make": make, "model": model, "year": year}
 
     # Extract via OCR
     ocr_data = await extract_estimate_via_ocr(file_bytes, file.content_type, file.filename)
@@ -170,8 +164,10 @@ async def create_estimate(
     estimate = {
         "id": estimate_id,
         "user_id": current_user["id"],
-        "vehicle_id": vehicle_id,
-        "vehicle_info": f"{vehicle['year']} {vehicle['make']} {vehicle['model']}",
+        "make": make,
+        "model": model,
+        "year": year,
+        "vehicle_info": f"{year} {make} {model}",
         "provider": ocr_data.get("provider"),
         "estimate_date": ocr_data.get("date"),
         "total_quoted": ocr_data.get("total_amount", 0),
@@ -302,6 +298,8 @@ async def update_estimate_item(
 
 class ConvertItemsRequest(BaseModel):
     item_ids: list[str] = []
+    vehicle_id: str | None = None
+    create_vehicle: bool = False
 
 
 @router.post("/{estimate_id}/convert")
@@ -324,12 +322,29 @@ async def convert_to_service_records(
     if not items:
         raise HTTPException(400, "No items selected for conversion")
 
+    # Resolve vehicle_id
+    vehicle_id = body.vehicle_id
+    if not vehicle_id and body.create_vehicle:
+        # Auto-create vehicle from estimate's make/model/year
+        new_vehicle = {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
+            "make": estimate.get("make", ""),
+            "model": estimate.get("model", ""),
+            "year": estimate.get("year", 0),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.vehicles.insert_one({**new_vehicle, "_id": new_vehicle["id"]})
+        vehicle_id = new_vehicle["id"]
+    elif not vehicle_id:
+        raise HTTPException(400, "Please select a vehicle or create one to save service records.")
+
     created = []
     for item in items:
         record = {
             "id": str(uuid.uuid4()),
             "user_id": current_user["id"],
-            "vehicle_id": estimate["vehicle_id"],
+            "vehicle_id": vehicle_id,
             "service_type": item.get("display_name") or item.get("raw_text"),
             "date": estimate.get("estimate_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "price": item.get("quoted_price", 0),
