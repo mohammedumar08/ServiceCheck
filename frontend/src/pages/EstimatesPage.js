@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, DollarSign, Car, Loader2, X, Camera } from 'lucide-react';
+import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, Car, Loader2, X, Camera } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
@@ -14,18 +13,17 @@ import axios from 'axios';
 import { toast } from 'sonner';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
-const currentYear = new Date().getFullYear();
 
 const EstimatesPage = () => {
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedMakeModel, setSelectedMakeModel] = useState('');
-  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [selectedOption, setSelectedOption] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [supportedVehicles, setSupportedVehicles] = useState([]);
+  const [garageVehicles, setGarageVehicles] = useState([]);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { getAuthHeader } = useAuth();
@@ -35,17 +33,59 @@ const EstimatesPage = () => {
 
   const fetchData = async () => {
     try {
-      const [estRes, supRes] = await Promise.all([
+      const [estRes, supRes, garRes] = await Promise.all([
         axios.get(`${API_URL}/estimates`, getAuthHeader()),
         axios.get(`${API_URL}/estimates/supported-vehicles`, getAuthHeader()),
+        axios.get(`${API_URL}/vehicles`, getAuthHeader()),
       ]);
       setEstimates(estRes.data.estimates || []);
       setSupportedVehicles(supRes.data.supported_vehicles || []);
+      setGarageVehicles(garRes.data || []);
     } catch (err) {
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Build unified options: garage matches first, then supported combos
+  const buildOptions = () => {
+    const options = [];
+    const supportedSet = new Set(
+      supportedVehicles.map((sv) => `${sv.make}|${sv.model}|${sv.year}`)
+    );
+
+    // Garage vehicles that match a supported combo
+    garageVehicles.forEach((v) => {
+      const key = `${v.make}|${v.model}|${v.year}`;
+      if (supportedSet.has(key)) {
+        options.push({
+          value: `garage:${v.id}:${v.make}:${v.model}:${v.year}`,
+          label: `${v.year} ${v.make} ${v.model}`,
+          group: 'garage',
+        });
+      }
+    });
+
+    // All supported combos (always shown so user can pick even without garage)
+    supportedVehicles.forEach((sv) => {
+      options.push({
+        value: `supported:${sv.make}:${sv.model}:${sv.year}`,
+        label: `${sv.year} ${sv.make} ${sv.model}`,
+        group: 'supported',
+      });
+    });
+
+    return options;
+  };
+
+  const parseSelection = () => {
+    if (!selectedOption) return null;
+    const parts = selectedOption.split(':');
+    if (parts[0] === 'garage') {
+      return { make: parts[2], model: parts[3], year: parseInt(parts[4]) };
+    }
+    return { make: parts[1], model: parts[2], year: parseInt(parts[3]) };
   };
 
   const handleFileSelect = (e) => {
@@ -56,18 +96,18 @@ const EstimatesPage = () => {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !selectedMakeModel) {
-      toast.error('Please select a model and upload a file');
+    const selection = parseSelection();
+    if (!selectedFile || !selection) {
+      toast.error('Please select a vehicle and upload a file');
       return;
     }
-    const [make, model] = selectedMakeModel.split('|');
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('make', make);
-      formData.append('model', model);
-      formData.append('year', selectedYear);
+      formData.append('make', selection.make);
+      formData.append('model', selection.model);
+      formData.append('year', selection.year);
       const res = await axios.post(`${API_URL}/estimates`, formData, {
         ...getAuthHeader(),
         headers: { ...getAuthHeader().headers, 'Content-Type': 'multipart/form-data' },
@@ -87,8 +127,7 @@ const EstimatesPage = () => {
   const resetDialog = () => {
     setSelectedFile(null);
     setPreviewUrl(null);
-    setSelectedMakeModel('');
-    setSelectedYear(String(currentYear));
+    setSelectedOption('');
   };
 
   const handleDelete = async (e, estimateId) => {
@@ -101,6 +140,10 @@ const EstimatesPage = () => {
       toast.error('Failed to delete estimate');
     }
   };
+
+  const options = buildOptions();
+  const garageOptions = options.filter((o) => o.group === 'garage');
+  const supportedOptions = options.filter((o) => o.group === 'supported');
 
   if (loading) {
     return (
@@ -115,7 +158,6 @@ const EstimatesPage = () => {
   return (
     <DashboardLayout>
       <div data-testid="estimates-page" className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">Repair Estimates</h1>
@@ -131,7 +173,6 @@ const EstimatesPage = () => {
           </Button>
         </div>
 
-        {/* Estimates List */}
         {estimates.length === 0 ? (
           <Card className="rounded-sm border-border">
             <CardContent className="flex flex-col items-center justify-center py-16">
@@ -145,8 +186,7 @@ const EstimatesPage = () => {
                 onClick={() => setDialogOpen(true)}
                 className="rounded-sm font-heading font-bold uppercase tracking-wider"
               >
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Your First Estimate
+                <Upload className="mr-2 h-4 w-4" /> Upload Your First Estimate
               </Button>
             </CardContent>
           </Card>
@@ -206,56 +246,43 @@ const EstimatesPage = () => {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="font-heading font-bold">Upload Repair Estimate</DialogTitle>
-              <DialogDescription>Select your vehicle model and upload a mechanic's quote for analysis.</DialogDescription>
+              <DialogDescription>Select the vehicle and upload a mechanic's quote for analysis.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              {/* Model Picker */}
+              {/* Vehicle Picker */}
               <div>
-                <label className="text-sm font-medium mb-1.5 block">Vehicle Model</label>
-                <Select value={selectedMakeModel} onValueChange={setSelectedMakeModel} disabled={uploading}>
-                  <SelectTrigger data-testid="estimate-model-select" className="rounded-sm">
-                    <SelectValue placeholder="Select supported model" />
+                <label className="text-sm font-medium mb-1.5 block">Vehicle</label>
+                <Select value={selectedOption} onValueChange={setSelectedOption} disabled={uploading}>
+                  <SelectTrigger data-testid="estimate-vehicle-select" className="rounded-sm">
+                    <SelectValue placeholder="Select vehicle" />
                   </SelectTrigger>
                   <SelectContent>
-                    {supportedVehicles.map((sv) => (
-                      <SelectItem key={`${sv.make}|${sv.model}`} value={`${sv.make}|${sv.model}`}>
-                        {sv.make} {sv.model}
-                      </SelectItem>
+                    {garageOptions.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">From My Garage</div>
+                        {garageOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                        <div className="my-1 border-t border-border" />
+                      </>
+                    )}
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">Supported Models</div>
+                    {supportedOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {supportedVehicles.length > 0
-                    ? `Supported: ${supportedVehicles.map((sv) => `${sv.make} ${sv.model}`).join(', ')}`
-                    : 'No supported models available'}
+                  Supported: {supportedVehicles.map((sv) => `${sv.year} ${sv.make} ${sv.model}`).join(', ')}
                 </p>
               </div>
-
-              {/* Year */}
-              {selectedMakeModel && (
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Year</label>
-                  <Input
-                    data-testid="estimate-year-input"
-                    type="number"
-                    min={2000}
-                    max={currentYear + 1}
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(e.target.value)}
-                    disabled={uploading}
-                    className="rounded-sm"
-                  />
-                </div>
-              )}
 
               {/* File Picker */}
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Estimate Document</label>
                 {selectedFile ? (
                   <div className="border border-border rounded-sm p-3 space-y-2">
-                    {previewUrl && (
-                      <img src={previewUrl} alt="Preview" className="w-full max-h-40 object-contain rounded-sm bg-muted" />
-                    )}
+                    {previewUrl && <img src={previewUrl} alt="Preview" className="w-full max-h-40 object-contain rounded-sm bg-muted" />}
                     <div className="flex items-center justify-between">
                       <span className="text-sm truncate flex-1">{selectedFile.name}</span>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} disabled={uploading}>
@@ -281,7 +308,7 @@ const EstimatesPage = () => {
               <Button
                 className="w-full rounded-sm font-heading font-bold uppercase tracking-wider"
                 onClick={handleUpload}
-                disabled={uploading || !selectedFile || !selectedMakeModel}
+                disabled={uploading || !selectedFile || !selectedOption}
                 data-testid="submit-estimate-btn"
               >
                 {uploading ? (

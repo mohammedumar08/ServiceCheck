@@ -46,14 +46,14 @@ class EstimateItemUpdate(BaseModel):
 
 @router.get("/supported-vehicles")
 async def get_supported_vehicles(current_user: dict = Depends(get_user)):
-    """Return the list of make/model combos that have maintenance schedule data."""
+    """Return the list of make/model/year combos that have maintenance schedule data."""
     pipeline = [
         {"$match": {"is_active": True}},
-        {"$group": {"_id": {"make": "$make", "model": "$model"}}},
-        {"$sort": {"_id.make": 1, "_id.model": 1}},
+        {"$group": {"_id": {"make": "$make", "model": "$model", "year": "$year"}}},
+        {"$sort": {"_id.make": 1, "_id.model": 1, "_id.year": 1}},
     ]
-    results = await db.maintenance_schedule_rules.aggregate(pipeline).to_list(200)
-    supported = [{"make": r["_id"]["make"], "model": r["_id"]["model"]} for r in results]
+    results = await db.maintenance_schedule_rules.aggregate(pipeline).to_list(500)
+    supported = [{"make": r["_id"]["make"], "model": r["_id"]["model"], "year": r["_id"]["year"]} for r in results]
     return {"supported_vehicles": supported}
 
 
@@ -142,14 +142,14 @@ async def create_estimate(
     if len(file_bytes) > 20 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 20MB)")
 
-    # Check if make/model is supported
+    # Check if make/model/year is supported
     supported_count = await db.maintenance_schedule_rules.count_documents({
-        "make": make, "model": model, "is_active": True
+        "make": make, "model": model, "year": year, "is_active": True
     })
     if supported_count == 0:
         raise HTTPException(
             400,
-            f"Estimate Checker is not yet supported for {make} {model}. Currently supported: Mazda CX-5."
+            f"Estimate Checker is not yet supported for {year} {make} {model}."
         )
 
     vehicle = {"make": make, "model": model, "year": year}
