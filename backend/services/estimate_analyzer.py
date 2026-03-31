@@ -190,9 +190,10 @@ async def get_classification(db, service_key: str):
             "category": "unknown",
             "display_name": None,
             "description": None,
-            "default_recommendation": "cannot_determine",
+            "default_recommendation_code": "cannot_determine",
+            "recommendation_text": "Service could not be identified.",
+            "user_explanation": "Review manually.",
             "severity": "low",
-            "notes_for_user": "Service could not be identified. Review manually."
         }
 
     rule = await db.service_classification_rules.find_one(
@@ -203,18 +204,20 @@ async def get_classification(db, service_key: str):
             "category": "unknown",
             "display_name": service_key.replace("_", " ").title(),
             "description": None,
-            "default_recommendation": "cannot_determine",
+            "default_recommendation_code": "cannot_determine",
+            "recommendation_text": "Service could not be identified.",
+            "user_explanation": "Review manually.",
             "severity": "low",
-            "notes_for_user": "No classification rule found for this service."
         }
 
     return {
         "category": rule["category"],
         "display_name": rule["display_name"],
-        "description": rule["description"],
-        "default_recommendation": rule["default_recommendation"],
+        "description": rule.get("description"),
+        "default_recommendation_code": rule.get("default_recommendation_code", rule.get("default_recommendation", "cannot_determine")),
+        "recommendation_text": rule.get("recommendation_text", ""),
+        "user_explanation": rule.get("user_explanation", ""),
         "severity": rule["severity"],
-        "notes_for_user": rule["notes_for_user"]
     }
 
 
@@ -284,25 +287,28 @@ async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle:
         region="Canada"
     )
 
-    recommendation = classification["default_recommendation"]
-    explanation = classification.get("notes_for_user", "")
+    recommendation_code = classification["default_recommendation_code"]
+    recommendation_text = classification.get("recommendation_text", "")
+    user_explanation = classification.get("user_explanation", "")
 
     if schedule.get("schedule_notes"):
-        explanation += f" Schedule: {schedule['schedule_notes']}"
+        user_explanation += f" Schedule: {schedule['schedule_notes']}"
 
     return {
         "raw_text": raw_text,
         "normalized_text": match.get("normalized_text", ""),
         "service_key": service_key,
         "display_name": classification.get("display_name") or raw_text,
+        "description": classification.get("description"),
         "matched_synonym": match["matched_synonym"],
         "match_type": match["match_type"],
         "match_strategy": match.get("match_strategy", match["match_type"]),
         "match_confidence": match["confidence"],
         "category": classification["category"],
         "severity": classification.get("severity", "low"),
-        "recommendation": recommendation,
-        "explanation": explanation,
+        "default_recommendation_code": recommendation_code,
+        "recommendation_text": recommendation_text,
+        "user_explanation": user_explanation,
         "quoted_price": quoted_price,
         "benchmark_min_price": None,
         "benchmark_max_price": None,

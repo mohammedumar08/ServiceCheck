@@ -163,8 +163,10 @@ class TestAnalyzeEstimateItem:
         result = asyncio.run(_run())
         assert result["service_key"] == "fuel_injector_cleaning"
         assert result["display_name"] == "Fuel Injector Cleaning"
-        assert result["category"] != "unknown"
-        assert result["recommendation"] != "cannot_determine"
+        assert result["category"] == "not_required"
+        assert result["default_recommendation_code"] == "likely_optional"
+        assert result["recommendation_text"] == "Usually not part of standard maintenance."
+        assert "drivability symptoms" in result["user_explanation"]
         assert result["normalized_text"] == "fuel injector cleaning"
         assert result["match_confidence"] >= 0.8
 
@@ -178,4 +180,6 @@ class TestAnalyzeEstimateItem:
         result = asyncio.run(_run())
         assert result["service_key"] is None
         assert result["category"] == "unknown"
-        assert result["recommendation"] == "cannot_determine"
+        assert result["default_recommendation_code"] == "cannot_determine"
+        assert result["recommendation_text"] == "Service could not be identified."
+        assert result["user_explanation"] == "Review manually."
