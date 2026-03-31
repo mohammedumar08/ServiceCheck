@@ -1,54 +1,187 @@
 import re
 
 
+# --- Normalization ---
+
+# Leading dealer/op codes: 1-3 uppercase letters followed by 1-3 digits
+_DEALER_CODE_RE = re.compile(r'^[A-Z]{1,4}\d{1,4}\b\s*', re.IGNORECASE)
+
+# Recommendation noise phrases (order matters – longer first)
+_NOISE_PHRASES = [
+    r'rec(?:ommended)?\s*every\s*\d*\s*(?:mth|month|months|mo|k|km|miles|mi)?\s*/?\s*\d*\s*(?:mth|month|months|mo|k|km|miles|mi)?',
+    r'every\s*\d+\s*(?:mth|month|months|mo|k|km|miles|mi)\s*/?\s*\d*\s*(?:mth|month|months|mo|k|km|miles|mi)?',
+    r'rec(?:ommended)?\s+',
+    r'\d+\s*(?:mth|month|months)\s*/?\s*\d+\s*k\b',
+    r'\d+\s*k\b',
+]
+_NOISE_RE = re.compile('|'.join(f'(?:{p})' for p in _NOISE_PHRASES), re.IGNORECASE)
+
+# Plural -> singular mappings applied as token transforms
+_PLURAL_MAP = {
+    'injectors': 'injector',
+    'filters': 'filter',
+    'plugs': 'plug',
+    'pads': 'pad',
+    'rotors': 'rotor',
+    'belts': 'belt',
+    'blades': 'blade',
+    'coils': 'coil',
+    'sensors': 'sensor',
+    'bearings': 'bearing',
+    'hoses': 'hose',
+    'brakes': 'brake',
+    'wipers': 'wiper',
+    'tires': 'tire',
+    'tyres': 'tire',
+    'shocks': 'shock',
+    'struts': 'strut',
+}
+
+# Verb form normalization
+_VERB_MAP = {
+    'clean': 'cleaning',
+    'flush': 'flushing',
+    'inspect': 'inspection',
+    'replace': 'replacement',
+    'align': 'alignment',
+    'rotate': 'rotation',
+    'balance': 'balancing',
+    'recharge': 'recharge',
+    'repair': 'repair',
+}
+
+
 def normalize_text(text: str) -> str:
-    """Normalize input text for synonym matching."""
+    """Basic normalize: lowercase, strip punctuation, collapse spaces."""
     text = text.lower().strip()
     text = re.sub(r'[^\w\s/\-]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 
-async def match_service_key(db, raw_text: str):
-    """Match raw line item text to a canonical service_key using synonym table."""
-    normalized = normalize_text(raw_text)
+def deep_normalize(text: str) -> str:
+    """Advanced normalization for dealer estimate line items.
+    
+    Strips op codes, recommendation noise, normalizes plurals and verb forms.
+    """
+    cleaned = text.strip()
 
-    # 1. Try exact match first
+    # 1. Remove leading dealer/op code (e.g. FU03, BG01, ABC123)
+    cleaned = _DEALER_CODE_RE.sub('', cleaned)
+
+    # 2. Lowercase
+    cleaned = cleaned.lower()
+
+    # 3. Replace hyphens/slashes surrounded by spaces with spaces
+    cleaned = re.sub(r'\s*[-/]\s*', ' ', cleaned)
+
+    # 4. Remove non-alphanumeric except spaces
+    cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
+
+    # 5. Remove recommendation noise phrases
+    cleaned = _NOISE_RE.sub(' ', cleaned)
+
+    # 6. Collapse whitespace
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    # 7. Token-level transforms: plural->singular, verb normalization
+    tokens = cleaned.split()
+    transformed = []
+    for t in tokens:
+        t = _PLURAL_MAP.get(t, t)
+        t = _VERB_MAP.get(t, t)
+        transformed.append(t)
+    cleaned = ' '.join(transformed)
+
+    return cleaned
+
+
+# --- Matching ---
+
+async def match_service_key(db, raw_text: str):
+    """Match raw line item text to a canonical service_key using synonym table.
+    
+    Pipeline: exact -> contains -> token-overlap fuzzy.
+    """
+    basic_norm = normalize_text(raw_text)
+    deep_norm = deep_normalize(raw_text)
+
+    # 1. Exact match on deep-normalized text
     exact = await db.service_synonyms.find(
         {"match_type": "exact", "is_active": True}
     ).to_list(500)
 
     for syn in sorted(exact, key=lambda s: -s.get("priority", 0)):
-        if normalized == syn["normalized_synonym_text"]:
-            return {
-                "service_key": syn["service_key"],
-                "matched_synonym": syn["synonym_text"],
-                "match_type": "exact",
-                "confidence": min(syn.get("priority", 80) / 100, 1.0)
-            }
+        syn_norm = syn["normalized_synonym_text"]
+        if deep_norm == syn_norm or basic_norm == syn_norm:
+            return _match_result(syn, "exact", deep_norm)
 
-    # 2. Try contains match ordered by priority
+    # 2. Contains match on deep-normalized text
     contains = await db.service_synonyms.find(
         {"match_type": "contains", "is_active": True}
     ).to_list(500)
 
     for syn in sorted(contains, key=lambda s: -s.get("priority", 0)):
-        if syn["normalized_synonym_text"] in normalized:
-            return {
-                "service_key": syn["service_key"],
-                "matched_synonym": syn["synonym_text"],
-                "match_type": "contains",
-                "confidence": min(syn.get("priority", 60) / 100, 0.95)
-            }
+        syn_norm = syn["normalized_synonym_text"]
+        if syn_norm in deep_norm or syn_norm in basic_norm:
+            return _match_result(syn, "contains", deep_norm)
 
-    # 3. No match
+    # 3. Token-overlap fuzzy matching
+    # Deep-normalize each synonym's text too and compare tokens
+    deep_tokens = set(deep_norm.split())
+    if len(deep_tokens) >= 2:
+        all_syns = exact + contains
+        best_score = 0.0
+        best_syn = None
+        for syn in all_syns:
+            syn_text = syn["normalized_synonym_text"]
+            # Also deep-normalize the synonym text for fair comparison
+            syn_deep = deep_normalize(syn_text)
+            syn_tokens = set(syn_deep.split())
+            if not syn_tokens:
+                continue
+            overlap = deep_tokens & syn_tokens
+            # Jaccard-like but weighted toward synonym coverage
+            coverage = len(overlap) / len(syn_tokens) if syn_tokens else 0
+            if coverage >= 0.6 and len(overlap) >= 2:
+                score = coverage * (syn.get("priority", 50) / 100)
+                if score > best_score:
+                    best_score = score
+                    best_syn = syn
+
+        if best_syn:
+            return _match_result(best_syn, "token_overlap", deep_norm, confidence_override=min(best_score, 0.85))
+
+    # 4. No match
     return {
         "service_key": None,
         "matched_synonym": None,
         "match_type": "none",
+        "match_strategy": "none",
+        "normalized_text": deep_norm,
         "confidence": 0.0
     }
 
+
+def _match_result(syn, strategy, normalized_text, confidence_override=None):
+    if confidence_override is not None:
+        conf = confidence_override
+    elif strategy == "exact":
+        conf = min(syn.get("priority", 80) / 100, 1.0)
+    else:
+        conf = min(syn.get("priority", 60) / 100, 0.95)
+
+    return {
+        "service_key": syn["service_key"],
+        "matched_synonym": syn["synonym_text"],
+        "match_type": strategy,
+        "match_strategy": strategy,
+        "normalized_text": normalized_text,
+        "confidence": conf
+    }
+
+
+# --- Classification & Schedule (unchanged) ---
 
 async def get_classification(db, service_key: str):
     """Lookup classification rules for a service_key."""
@@ -86,7 +219,7 @@ async def get_classification(db, service_key: str):
 
 
 async def get_maintenance_schedule(db, service_key: str, make: str, model: str, year: int, engine: str = None, region: str = "Canada"):
-    """Lookup maintenance schedule rules. Prefer exact engine match, fallback to engine=null."""
+    """Lookup maintenance schedule rules."""
     if not service_key or not make:
         return {"maintenance_match": "unknown", "schedule_notes": None}
 
@@ -95,21 +228,18 @@ async def get_maintenance_schedule(db, service_key: str, make: str, model: str, 
         "service_key": service_key, "is_active": True
     }
 
-    # Try exact engine match first
     if engine:
         exact_q = {**query, "engine": engine, "region": region}
         rule = await db.maintenance_schedule_rules.find_one(exact_q, {"_id": 0})
         if rule:
             return _format_schedule(rule)
 
-    # Fallback to null/empty engine
     for eng_val in [None, ""]:
         fallback_q = {**query, "engine": eng_val, "region": region}
         rule = await db.maintenance_schedule_rules.find_one(fallback_q, {"_id": 0})
         if rule:
             return _format_schedule(rule, assumed_engine=True if engine else False)
 
-    # Try without region constraint
     for eng_val in [None, ""]:
         fallback_q = {**query, "engine": eng_val}
         rule = await db.maintenance_schedule_rules.find_one(fallback_q, {"_id": 0})
@@ -136,16 +266,15 @@ def _format_schedule(rule, assumed_engine=False):
     }
 
 
+# --- Full Analysis Pipeline ---
+
 async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle: dict):
     """Full analysis pipeline for a single estimate line item."""
-    # Step 1: Match service key
     match = await match_service_key(db, raw_text)
     service_key = match["service_key"]
 
-    # Step 2: Get classification
     classification = await get_classification(db, service_key)
 
-    # Step 3: Get maintenance schedule
     schedule = await get_maintenance_schedule(
         db, service_key,
         make=vehicle.get("make", ""),
@@ -155,7 +284,6 @@ async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle:
         region="Canada"
     )
 
-    # Step 4: Build recommendation
     recommendation = classification["default_recommendation"]
     explanation = classification.get("notes_for_user", "")
 
@@ -164,10 +292,12 @@ async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle:
 
     return {
         "raw_text": raw_text,
+        "normalized_text": match.get("normalized_text", ""),
         "service_key": service_key,
         "display_name": classification.get("display_name") or raw_text,
         "matched_synonym": match["matched_synonym"],
         "match_type": match["match_type"],
+        "match_strategy": match.get("match_strategy", match["match_type"]),
         "match_confidence": match["confidence"],
         "category": classification["category"],
         "severity": classification.get("severity", "low"),

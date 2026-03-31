@@ -21,6 +21,7 @@ const RECOMMENDATION_CONFIG = {
   recommended: { label: 'Recommended', icon: ShieldCheck, color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', dotColor: 'bg-amber-500' },
   conditional: { label: 'Conditional', icon: ShieldQuestion, color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', dotColor: 'bg-amber-500' },
   optional: { label: 'Optional', icon: HelpCircle, color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', dotColor: 'bg-blue-500' },
+  likely_optional: { label: 'Likely Optional', icon: HelpCircle, color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', dotColor: 'bg-blue-500' },
   not_required: { label: 'Not Required', icon: XCircle, color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dotColor: 'bg-emerald-500' },
   cannot_determine: { label: 'Unknown', icon: HelpCircle, color: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30', dotColor: 'bg-zinc-500' },
 };
@@ -288,20 +289,33 @@ const EstimateDetailPage = () => {
                           <div className="space-y-2">
                             <div>
                               <p className="text-xs text-muted-foreground uppercase tracking-wider">Matched Service</p>
-                              <p className="text-sm font-medium mt-0.5">{item.service_key?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Unmatched'}</p>
+                              <p className={`text-sm font-medium mt-0.5 ${item.service_key ? '' : 'text-muted-foreground italic'}`}>
+                                {item.service_key?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'No match found'}
+                              </p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Match Confidence</p>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Match Strategy</p>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden max-w-32">
-                                  <div
-                                    className="h-full rounded-full bg-primary"
-                                    style={{ width: `${(item.match_confidence || 0) * 100}%` }}
-                                  />
+                                <Badge variant="outline" className="text-[10px] rounded-sm capitalize">
+                                  {(item.match_strategy || item.match_type || 'none').replace('_', ' ')}
+                                </Badge>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="h-1.5 w-20 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${(item.match_confidence || 0) >= 0.8 ? 'bg-emerald-500' : (item.match_confidence || 0) >= 0.5 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                      style={{ width: `${(item.match_confidence || 0) * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs font-mono">{((item.match_confidence || 0) * 100).toFixed(0)}%</span>
                                 </div>
-                                <span className="text-xs font-mono">{((item.match_confidence || 0) * 100).toFixed(0)}%</span>
                               </div>
                             </div>
+                            {item.normalized_text && item.normalized_text !== item.raw_text?.toLowerCase() && (
+                              <div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Cleaned Text</p>
+                                <p className="text-sm mt-0.5 font-mono text-muted-foreground">{item.normalized_text}</p>
+                              </div>
+                            )}
                             {item.notes && (
                               <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Notes</p>
