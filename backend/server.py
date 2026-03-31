@@ -1002,6 +1002,12 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 async def root():
     return {"message": "Car Service Tracker API", "status": "running"}
 
+# Register estimates router
+from routers.estimates import router as estimates_router, init_router as init_estimates
+from emergentintegrations.llm.chat import LlmChat as _LlmChat
+init_estimates(db, get_current_user, _LlmChat, os.environ.get('EMERGENT_LLM_KEY'))
+api_router.include_router(estimates_router)
+
 # Include the router in the main app
 app.include_router(api_router)
 
@@ -1023,3 +1029,12 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+@app.on_event("startup")
+async def seed_and_index():
+    from seed_loader import run_seed, ensure_indexes
+    try:
+        await ensure_indexes(db)
+        await run_seed(db)
+    except Exception as e:
+        print(f"Seed/index error (non-fatal): {e}")

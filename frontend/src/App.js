@@ -11,6 +11,8 @@ import VehiclesPage from "./pages/VehiclesPage";
 import ServiceRecordsPage from "./pages/ServiceRecordsPage";
 import RemindersPage from "./pages/RemindersPage";
 import ExportPage from "./pages/ExportPage";
+import EstimatesPage from "./pages/EstimatesPage";
+import EstimateDetailPage from "./pages/EstimateDetailPage";
 import "./App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -74,6 +76,8 @@ const AppRouter = () => {
       <Route path="/services" element={<ProtectedRoute><ServiceRecordsPage /></ProtectedRoute>} />
       <Route path="/reminders" element={<ProtectedRoute><RemindersPage /></ProtectedRoute>} />
       <Route path="/export" element={<ProtectedRoute><ExportPage /></ProtectedRoute>} />
+      <Route path="/estimates" element={<ProtectedRoute><EstimatesPage /></ProtectedRoute>} />
+      <Route path="/estimates/:id" element={<ProtectedRoute><EstimateDetailPage /></ProtectedRoute>} />
     </Routes>
   );
 };

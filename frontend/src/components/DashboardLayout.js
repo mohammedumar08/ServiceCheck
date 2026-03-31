@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Wrench, LayoutDashboard, Car, FileText, Bell, Download, 
+  Wrench, LayoutDashboard, Car, FileText, Bell, Download, FileSearch,
   LogOut, Menu, X, Sun, Moon, User, Trash2, Loader2
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -25,6 +25,7 @@ const DashboardLayout = ({ children }) => {
     { name: 'Vehicles', path: '/vehicles', icon: Car },
     { name: 'Services', path: '/services', icon: FileText },
     { name: 'Reminders', path: '/reminders', icon: Bell },
+    { name: 'Estimates', path: '/estimates', icon: FileSearch },
     { name: 'Export', path: '/export', icon: Download },
   ];
 
