@@ -90,7 +90,9 @@ Return JSON:
   "raw_text_summary": "brief summary of the document"
 }
 
-Extract ALL items including $0 and informational items. Be thorough."""
+Extract ALL items including $0 and informational items. Be thorough.
+
+IMPORTANT: Do NOT include summary lines like "Total", "Subtotal", "Tax", "Grand Total", "Balance Due", or "Amount Due" as line items. Only extract actual service/repair items."""
     ).with_model("openai", "gpt-5.2")
 
     image_contents = [ImageContent(image_base64=img_b64) for img_b64 in images_b64]
