@@ -20,6 +20,8 @@ Build a web-based app for tracking car service records with AI-powered OCR for r
 - **36 automated pytest tests** — all passing, covering every service type
 - **Match Debug Page** (`/match-debug`) — paste any dealer line to see normalization + matching + classification pipeline output
 - **Debug API** (`POST /api/estimates/debug/match`) — returns full pipeline breakdown as JSON
+- **Vehicle dropdown filter** (P0 fix): Convert dialog only shows garage vehicles matching estimate's Make & Model
+- **PWA Support**: manifest.json, service-worker.js, Apple meta tags, offline caching, "Add to Home Screen" capability
 
 ## DB Schema: service_classification_rules
 Fields: service_key, display_name, category, severity, default_recommendation_code, recommendation_text, user_explanation, description, region_scope, is_active
@@ -41,9 +43,11 @@ Fields: service_key, display_name, category, severity, default_recommendation_co
 
 ## Test Files
 - `/app/backend/tests/test_estimate_matching.py` — 36 pytest cases + report generator
-- `/app/test_reports/matching_pipeline_report.json` — Readable test report
+- `/app/backend/tests/test_pwa.py` — PWA asset verification tests
+- `/app/backend/tests/test_estimates.py` — Estimate API endpoint tests
+- `/app/test_reports/iteration_3.json` — Latest test report
 
 ## Backlog
-- P1: Test with real dealer estimates end-to-end
-- P2: PWA support
-- P3: Capacitor native apps, server.py modularization
+- P2: Modularize `server.py` — move auth & service-record routes into `/routers`
+- P2: Remove unused `file-saver` dependency
+- P3: Capacitor native apps for iOS/Android
