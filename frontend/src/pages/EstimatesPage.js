@@ -97,7 +97,6 @@ const EstimatesPage = () => {
 
   const handleDelete = async (e, estimateId) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this estimate?')) return;
     try {
       await axios.delete(`${API_URL}/estimates/${estimateId}`, getAuthHeader());
       setEstimates((prev) => prev.filter((est) => est.id !== estimateId));
