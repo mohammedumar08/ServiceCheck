@@ -105,6 +105,186 @@ async def get_supported_vehicles(current_user: dict = Depends(get_user)):
     return {"supported_vehicles": supported}
 
 
+# --- Public (Guest) Endpoints - No auth required ---
+
+@router.get("/public/region-profiles")
+async def public_region_profiles():
+    profiles = await db.region_profiles.find({"is_active": True}, {"_id": 0}).to_list(20)
+    return {"profiles": profiles}
+
+
+@router.get("/public/supported-vehicles")
+async def public_supported_vehicles():
+    pipeline = [
+        {"$match": {"is_active": True}},
+        {"$group": {
+            "_id": {"make": "$make", "model": "$model", "year": "$year"},
+            "regions": {"$addToSet": "$region"},
+        }},
+        {"$sort": {"_id.make": 1, "_id.model": 1, "_id.year": 1}},
+    ]
+    results = await db.maintenance_schedule_rules.aggregate(pipeline).to_list(500)
+    return {"supported_vehicles": [
+        {"make": r["_id"]["make"], "model": r["_id"]["model"], "year": r["_id"]["year"], "regions": sorted(r["regions"])}
+        for r in results
+    ]}
+
+
+@router.post("/public/analyze")
+async def guest_analyze_estimate(
+    file: UploadFile = File(...),
+    make: str = Form(...),
+    model: str = Form(...),
+    year: int = Form(2020),
+    region_code: str = Form("CA"),
+    current_mileage: Optional[int] = Form(None),
+):
+    """Public endpoint: analyze estimate without login."""
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, "Only JPEG, PNG, WebP images and PDF files are supported")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 20MB)")
+
+    vehicle = {"make": make, "model": model, "year": year}
+    ocr_data = await extract_estimate_via_ocr(file_bytes, file.content_type, file.filename)
+    detected_region = _detect_region_from_ocr(ocr_data)
+
+    distance_unit = "mi" if region_code == "US" else "km"
+    currency_code = "USD" if region_code == "US" else "CAD"
+    schedule_code = "SCHEDULE_1"
+
+    estimate_id = str(uuid.uuid4())
+    guest_token = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    estimate = {
+        "id": estimate_id,
+        "user_id": None,
+        "guest_token": guest_token,
+        "make": make,
+        "model": model,
+        "year": year,
+        "vehicle_info": f"{year} {make} {model}",
+        "provider": ocr_data.get("provider"),
+        "estimate_date": ocr_data.get("date"),
+        "total_quoted": ocr_data.get("total_amount", 0),
+        "raw_text_summary": ocr_data.get("raw_text_summary", ""),
+        "file_name": file.filename,
+        "file_type": file.content_type,
+        "status": "analyzed",
+        "region_code": region_code,
+        "detected_region": detected_region,
+        "schedule_code": schedule_code,
+        "current_mileage": current_mileage,
+        "distance_unit": distance_unit,
+        "currency_code": currency_code,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    items = []
+    for idx, li in enumerate(ocr_data.get("line_items", [])):
+        analysis = await analyze_estimate_item(
+            db, raw_text=li.get("description", ""), quoted_price=float(li.get("price", 0)),
+            vehicle=vehicle, region_code=region_code, schedule_code=schedule_code, current_mileage=current_mileage,
+        )
+        item = {
+            "id": str(uuid.uuid4()), "estimate_id": estimate_id, "item_index": idx,
+            "raw_text": li.get("description", ""), "quantity": li.get("quantity", 1),
+            "notes": li.get("notes", ""), **analysis,
+            "user_override": False, "approved": False, "converted_to_service": False,
+        }
+        items.append(item)
+
+    await db.repair_estimates.insert_one({**estimate, "_id": estimate_id})
+    if items:
+        await db.repair_estimate_items.insert_many([{**i, "_id": i["id"]} for i in items])
+    for item in items:
+        item.pop("_id", None)
+
+    return {"estimate": estimate, "items": items, "summary": _build_summary(items), "guest_token": guest_token}
+
+
+@router.get("/public/results/{estimate_id}")
+async def guest_get_results(estimate_id: str, guest_token: str = Query(...)):
+    """Public endpoint: retrieve guest estimate results."""
+    estimate = await db.repair_estimates.find_one(
+        {"id": estimate_id, "guest_token": guest_token}, {"_id": 0}
+    )
+    if not estimate:
+        raise HTTPException(404, "Estimate not found")
+    items = await db.repair_estimate_items.find(
+        {"estimate_id": estimate_id}, {"_id": 0}
+    ).sort("item_index", 1).to_list(100)
+    return {"estimate": estimate, "items": items, "summary": _build_summary(items)}
+
+
+@router.post("/public/results/{estimate_id}/reanalyze")
+async def guest_reanalyze(estimate_id: str, guest_token: str = Query(...), body: ReanalyzeRequest = None):
+    """Public endpoint: re-run guest estimate with different driving conditions."""
+    if body is None:
+        body = ReanalyzeRequest()
+    estimate = await db.repair_estimates.find_one(
+        {"id": estimate_id, "guest_token": guest_token}, {"_id": 0}
+    )
+    if not estimate:
+        raise HTTPException(404, "Estimate not found")
+
+    vehicle = {"make": estimate.get("make", ""), "model": estimate.get("model", ""), "year": estimate.get("year", 0)}
+    region_code = estimate.get("region_code") or "CA"
+    mileage = estimate.get("current_mileage")
+
+    updated_items = []
+    items = await db.repair_estimate_items.find({"estimate_id": estimate_id}, {"_id": 0}).sort("item_index", 1).to_list(100)
+    for item in items:
+        analysis = await analyze_estimate_item(
+            db, raw_text=item["raw_text"], quoted_price=item.get("quoted_price", 0),
+            vehicle=vehicle, region_code=region_code, schedule_code=body.schedule_code, current_mileage=mileage,
+        )
+        update_fields = {
+            k: analysis[k] for k in [
+                "service_key", "display_name", "description", "matched_synonym",
+                "match_type", "match_strategy", "match_confidence", "category",
+                "severity", "default_recommendation_code", "recommendation_text",
+                "user_explanation", "region_code", "schedule_used", "due_status",
+                "interval_value", "interval_unit", "interval_km", "interval_miles",
+                "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
+                "schedule_notes", "source_reference", "rule_trace", "normalized_text",
+            ] if k in analysis
+        }
+        update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.repair_estimate_items.update_one({"id": item["id"]}, {"$set": update_fields})
+        updated_items.append({**item, **update_fields})
+
+    await db.repair_estimates.update_one(
+        {"id": estimate_id}, {"$set": {"schedule_code": body.schedule_code, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"estimate": {**estimate, "schedule_code": body.schedule_code}, "items": updated_items, "summary": _build_summary(updated_items)}
+
+
+class ClaimRequest(BaseModel):
+    guest_token: str
+
+
+@router.post("/public/claim/{estimate_id}")
+async def claim_guest_estimate(estimate_id: str, body: ClaimRequest, current_user: dict = Depends(get_user)):
+    """Claim a guest estimate after login."""
+    estimate = await db.repair_estimates.find_one(
+        {"id": estimate_id, "user_id": None, "guest_token": body.guest_token}
+    )
+    if not estimate:
+        raise HTTPException(404, "Guest estimate not found or already claimed")
+
+    await db.repair_estimates.update_one(
+        {"id": estimate_id},
+        {"$set": {"user_id": current_user["id"], "guest_token": None}}
+    )
+    return {"message": "Estimate claimed", "id": estimate_id}
+
+
 # --- OCR Extraction ---
 async def extract_estimate_via_ocr(file_bytes: bytes, content_type: str, filename: str) -> dict:
     """Use GPT-5.2 vision to extract line items from an estimate image/PDF."""
