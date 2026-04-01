@@ -44,16 +44,36 @@ class EstimateItemUpdate(BaseModel):
     recommendation: Optional[str] = None
 
 
+# --- Region Profiles ---
+
+@router.get("/region-profiles")
+async def get_region_profiles(current_user: dict = Depends(get_user)):
+    """Return all active region profiles."""
+    profiles = await db.region_profiles.find({"is_active": True}, {"_id": 0}).to_list(20)
+    return {"profiles": profiles}
+
+
 @router.get("/supported-vehicles")
 async def get_supported_vehicles(current_user: dict = Depends(get_user)):
-    """Return the list of make/model/year combos that have maintenance schedule data."""
+    """Return make/model/year combos with available regions."""
     pipeline = [
         {"$match": {"is_active": True}},
-        {"$group": {"_id": {"make": "$make", "model": "$model", "year": "$year"}}},
+        {"$group": {
+            "_id": {"make": "$make", "model": "$model", "year": "$year"},
+            "regions": {"$addToSet": "$region"},
+        }},
         {"$sort": {"_id.make": 1, "_id.model": 1, "_id.year": 1}},
     ]
     results = await db.maintenance_schedule_rules.aggregate(pipeline).to_list(500)
-    supported = [{"make": r["_id"]["make"], "model": r["_id"]["model"], "year": r["_id"]["year"]} for r in results]
+    supported = [
+        {
+            "make": r["_id"]["make"],
+            "model": r["_id"]["model"],
+            "year": r["_id"]["year"],
+            "regions": sorted(r["regions"]),
+        }
+        for r in results
+    ]
     return {"supported_vehicles": supported}
 
 
@@ -89,7 +109,7 @@ Also extract:
 - provider: shop/dealer name
 - date: estimate date (YYYY-MM-DD or null)
 - total_amount: total quoted amount if shown
-- vehicle_info: any vehicle details mentioned (make, model, year, VIN, odometer)
+- vehicle_info: any vehicle details mentioned (make, model, year, odometer)
 
 Return JSON:
 {
@@ -131,6 +151,9 @@ async def create_estimate(
     make: str = Form(...),
     model: str = Form(...),
     year: int = Form(2020),
+    region_code: str = Form("CA"),
+    schedule_code: str = Form("SCHEDULE_1"),
+    current_mileage: Optional[int] = Form(None),
     current_user: dict = Depends(get_user)
 ):
     # Validate file
@@ -142,20 +165,28 @@ async def create_estimate(
     if len(file_bytes) > 20 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 20MB)")
 
-    # Check if make/model/year is supported
+    # Check if make/model/year is supported for this region
     supported_count = await db.maintenance_schedule_rules.count_documents({
-        "make": make, "model": model, "year": year, "is_active": True
+        "make": make, "model": model, "year": year, "region": region_code, "is_active": True
     })
     if supported_count == 0:
-        raise HTTPException(
-            400,
-            f"Estimate Checker is not yet supported for {year} {make} {model}."
-        )
+        # Fallback: check any region
+        any_count = await db.maintenance_schedule_rules.count_documents({
+            "make": make, "model": model, "year": year, "is_active": True
+        })
+        if any_count == 0:
+            raise HTTPException(
+                400,
+                f"Estimate Checker is not yet supported for {year} {make} {model}."
+            )
 
     vehicle = {"make": make, "model": model, "year": year}
 
     # Extract via OCR
     ocr_data = await extract_estimate_via_ocr(file_bytes, file.content_type, file.filename)
+
+    distance_unit = "mi" if region_code == "US" else "km"
+    currency_code = "USD" if region_code == "US" else "CAD"
 
     # Create estimate record
     estimate_id = str(uuid.uuid4())
@@ -175,6 +206,11 @@ async def create_estimate(
         "file_name": file.filename,
         "file_type": file.content_type,
         "status": "analyzed",
+        "region_code": region_code,
+        "schedule_code": schedule_code,
+        "current_mileage": current_mileage,
+        "distance_unit": distance_unit,
+        "currency_code": currency_code,
         "created_at": now,
         "updated_at": now
     }
@@ -186,7 +222,10 @@ async def create_estimate(
             db,
             raw_text=li.get("description", ""),
             quoted_price=float(li.get("price", 0)),
-            vehicle=vehicle
+            vehicle=vehicle,
+            region_code=region_code,
+            schedule_code=schedule_code,
+            current_mileage=current_mileage,
         )
 
         item = {
@@ -349,7 +388,7 @@ async def convert_to_service_records(
             "date": estimate.get("estimate_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "price": item.get("quoted_price", 0),
             "location": estimate.get("provider", ""),
-            "odometer": 0,  # Default to 0 for converted estimates
+            "odometer": estimate.get("current_mileage") or 0,
             "notes": f"Converted from estimate. {item.get('notes', '')}".strip(),
             "created_at": datetime.now(timezone.utc).isoformat()
         }
@@ -388,27 +427,41 @@ def _build_summary(items: list) -> dict:
     }
 
 
+# --- Debug Endpoint ---
+
 class DebugMatchRequest(BaseModel):
     input_line_text: str
-    vehicle_make: str = "Toyota"
-    vehicle_model: str = "Camry"
-    vehicle_year: int = 2020
+    vehicle_make: str = "Mazda"
+    vehicle_model: str = "CX-5"
+    vehicle_year: int = 2022
+    region_code: str = "CA"
+    schedule_code: str = "SCHEDULE_1"
+    current_mileage: Optional[int] = None
 
 
 @router.post("/debug/match")
 async def debug_match_line(body: DebugMatchRequest, current_user: dict = Depends(get_user)):
-    """Debug endpoint: paste a dealer line item and see exactly how the matcher processes it."""
+    """Debug endpoint: paste a dealer line item and see the full pipeline with rule trace."""
     raw = body.input_line_text
     normalized = deep_normalize(raw)
     match = await match_service_key(db, raw)
     classification = await get_classification(db, match["service_key"])
 
     vehicle = {"make": body.vehicle_make, "model": body.vehicle_model, "year": body.vehicle_year}
-    full_analysis = await analyze_estimate_item(db, raw, 0.0, vehicle)
+    full_analysis = await analyze_estimate_item(
+        db, raw, 0.0, vehicle,
+        region_code=body.region_code,
+        schedule_code=body.schedule_code,
+        current_mileage=body.current_mileage,
+    )
 
     return {
         "input_line_text": raw,
         "normalized_text": normalized,
+        "region_code": body.region_code,
+        "schedule_code": body.schedule_code,
+        "current_mileage": body.current_mileage,
+        "distance_unit": "mi" if body.region_code == "US" else "km",
         "match": {
             "service_key": match["service_key"],
             "matched_synonym": match["matched_synonym"],
@@ -424,5 +477,17 @@ async def debug_match_line(body: DebugMatchRequest, current_user: dict = Depends
             "user_explanation": classification.get("user_explanation"),
             "description": classification.get("description"),
         },
+        "verdict": {
+            "due_status": full_analysis.get("due_status"),
+            "schedule_used": full_analysis.get("schedule_used"),
+            "interval_value": full_analysis.get("interval_value"),
+            "interval_unit": full_analysis.get("interval_unit"),
+            "miles_remaining": full_analysis.get("miles_remaining"),
+            "trigger_type": full_analysis.get("trigger_type"),
+            "severe_only": full_analysis.get("severe_only"),
+            "source_reference": full_analysis.get("source_reference"),
+            "schedule_notes": full_analysis.get("schedule_notes"),
+        },
+        "rule_trace": full_analysis.get("rule_trace"),
         "full_analysis": full_analysis,
     }

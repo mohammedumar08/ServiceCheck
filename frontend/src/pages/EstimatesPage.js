@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, Car, Loader2, X, Camera } from 'lucide-react';
+import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, Car, Loader2, X, Camera, Globe, Gauge } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +28,9 @@ const EstimatesPage = () => {
   const [selYear, setSelYear] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [regionCode, setRegionCode] = useState('CA');
+  const [scheduleCode, setScheduleCode] = useState('SCHEDULE_1');
+  const [currentMileage, setCurrentMileage] = useState('');
   const [supportedVehicles, setSupportedVehicles] = useState([]);
   const [garageVehicles, setGarageVehicles] = useState([]);
   const fileInputRef = useRef(null);
@@ -91,6 +95,9 @@ const EstimatesPage = () => {
       formData.append('make', selection.make);
       formData.append('model', selection.model);
       formData.append('year', selection.year);
+      formData.append('region_code', regionCode);
+      formData.append('schedule_code', scheduleCode);
+      if (currentMileage) formData.append('current_mileage', parseInt(currentMileage));
       const res = await axios.post(`${API_URL}/estimates`, formData, {
         ...getAuthHeader(),
         headers: { ...getAuthHeader().headers, 'Content-Type': 'multipart/form-data' },
@@ -115,6 +122,9 @@ const EstimatesPage = () => {
     setSelMake('');
     setSelModel('');
     setSelYear('');
+    setRegionCode('CA');
+    setScheduleCode('SCHEDULE_1');
+    setCurrentMileage('');
   };
 
   const handleDelete = async (e, estimateId) => {
@@ -194,6 +204,11 @@ const EstimatesPage = () => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold truncate">{est.provider || 'Unknown Provider'}</p>
                             <Badge variant="outline" className="text-xs rounded-sm shrink-0">{est.status}</Badge>
+                            {est.region_code && (
+                              <Badge variant="outline" className="text-xs rounded-sm shrink-0">
+                                <Globe className="h-3 w-3 mr-1" />{est.region_code === 'US' ? 'US' : 'CA'}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1"><Car className="h-3.5 w-3.5" />{est.vehicle_info}</span>
@@ -322,6 +337,56 @@ const EstimatesPage = () => {
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* Region Selector */}
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Region</label>
+                <Select value={regionCode} onValueChange={(v) => { setRegionCode(v); if (v !== 'US') { setScheduleCode('SCHEDULE_1'); setCurrentMileage(''); } }} disabled={uploading}>
+                  <SelectTrigger data-testid="estimate-region-select" className="rounded-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CA"><span className="flex items-center gap-2"><Globe className="h-3.5 w-3.5" />Canada</span></SelectItem>
+                    <SelectItem value="US"><span className="flex items-center gap-2"><Globe className="h-3.5 w-3.5" />United States</span></SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* US-specific: Mileage + Schedule */}
+              {regionCode === 'US' && (
+                <div className="space-y-3 rounded-sm border border-border/50 p-3 bg-muted/30">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Gauge className="h-3.5 w-3.5" />
+                    <span>US Schedule Options</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Current Mileage (optional)</label>
+                    <Input
+                      data-testid="estimate-mileage-input"
+                      type="number"
+                      placeholder="e.g. 42000"
+                      value={currentMileage}
+                      onChange={(e) => setCurrentMileage(e.target.value)}
+                      disabled={uploading}
+                      className="rounded-sm"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Enter mileage to see due/not-due status per service</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Driving Schedule</label>
+                    <Select value={scheduleCode} onValueChange={setScheduleCode} disabled={uploading}>
+                      <SelectTrigger data-testid="estimate-schedule-select" className="rounded-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SCHEDULE_1">Schedule 1 - Normal Driving</SelectItem>
+                        <SelectItem value="SCHEDULE_2">Schedule 2 - Severe Conditions</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-1">Use Schedule 2 for dusty, short-trip, or extreme driving</p>
+                  </div>
+                </div>
               )}
 
               {/* File Picker */}

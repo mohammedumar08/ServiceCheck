@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, FileSearch, CheckCircle2, AlertTriangle, HelpCircle, XCircle,
-  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2, ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle
+  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2, ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle, Globe, Clock, Gauge
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -142,6 +142,8 @@ const EstimateDetailPage = () => {
   if (!data) return null;
 
   const { estimate, items, summary } = data;
+  const currSymbol = estimate.currency_code === 'USD' ? '$' : 'C$';
+  const distUnit = estimate.distance_unit || 'km';
   const recConfig = (rec) => RECOMMENDATION_CONFIG[rec] || RECOMMENDATION_CONFIG.cannot_determine;
   const catConfig = (cat) => CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.unknown;
 
@@ -169,6 +171,21 @@ const EstimateDetailPage = () => {
                 <span>{estimate.vehicle_info}</span>
                 {estimate.estimate_date && (
                   <span>{new Date(estimate.estimate_date).toLocaleDateString()}</span>
+                )}
+                {estimate.region_code && (
+                  <Badge variant="outline" className="text-[10px] rounded-sm">
+                    <Globe className="h-3 w-3 mr-1" />
+                    Based on {estimate.region_code === 'US' ? 'US' : 'Canadian'} schedule
+                    {estimate.schedule_code && estimate.region_code === 'US' && (
+                      <span className="ml-1 opacity-70">({estimate.schedule_code === 'SCHEDULE_2' ? 'Severe' : 'Normal'})</span>
+                    )}
+                  </Badge>
+                )}
+                {estimate.current_mileage && (
+                  <Badge variant="outline" className="text-[10px] rounded-sm">
+                    <Gauge className="h-3 w-3 mr-1" />
+                    {estimate.current_mileage.toLocaleString()} {estimate.distance_unit || 'km'}
+                  </Badge>
                 )}
               </div>
             </div>
@@ -361,10 +378,40 @@ const EstimateDetailPage = () => {
                                 </div>
                               </div>
                             </div>
-                            {item.interval_km && (
+                            {(item.interval_value || item.interval_km || item.interval_miles) && (
                               <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Service Interval</p>
-                                <p className="text-sm font-mono mt-0.5">{item.interval_km.toLocaleString()} km</p>
+                                <p className="text-sm font-mono mt-0.5">
+                                  {(item.interval_value || item.interval_km || item.interval_miles || 0).toLocaleString()} {item.interval_unit || distUnit}
+                                </p>
+                              </div>
+                            )}
+                            {item.due_status && item.due_status !== 'unknown' && (
+                              <div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Due Status</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <Badge variant="outline" className={`text-[10px] rounded-sm ${
+                                    item.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
+                                    item.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                                    item.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                                    item.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
+                                    'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+                                  }`}>
+                                    <Clock className="h-3 w-3 mr-0.5" />
+                                    {item.due_status.replace(/_/g, ' ')}
+                                  </Badge>
+                                  {item.miles_remaining != null && (
+                                    <span className="text-xs font-mono text-muted-foreground">
+                                      {item.miles_remaining.toLocaleString()} {item.interval_unit || distUnit} remaining
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {item.schedule_notes && (
+                              <div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Schedule Note</p>
+                                <p className="text-sm mt-0.5 text-muted-foreground">{item.schedule_notes}</p>
                               </div>
                             )}
                             {item.normalized_text && item.normalized_text !== item.raw_text?.toLowerCase() && (

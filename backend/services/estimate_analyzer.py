@@ -1,5 +1,7 @@
 import re
 
+from services.verdict_engine import compute_verdict
+
 
 # --- Normalization ---
 
@@ -181,7 +183,7 @@ def _match_result(syn, strategy, normalized_text, confidence_override=None):
     }
 
 
-# --- Classification & Schedule (unchanged) ---
+# --- Classification ---
 
 async def get_classification(db, service_key: str):
     """Lookup classification rules for a service_key."""
@@ -221,78 +223,47 @@ async def get_classification(db, service_key: str):
     }
 
 
-async def get_maintenance_schedule(db, service_key: str, make: str, model: str, year: int, engine: str = None, region: str = "Canada"):
-    """Lookup maintenance schedule rules."""
-    if not service_key or not make:
-        return {"maintenance_match": "unknown", "schedule_notes": None}
-
-    query = {
-        "make": make, "model": model, "year": year,
-        "service_key": service_key, "is_active": True
-    }
-
-    if engine:
-        exact_q = {**query, "engine": engine, "region": region}
-        rule = await db.maintenance_schedule_rules.find_one(exact_q, {"_id": 0})
-        if rule:
-            return _format_schedule(rule)
-
-    for eng_val in [None, ""]:
-        fallback_q = {**query, "engine": eng_val, "region": region}
-        rule = await db.maintenance_schedule_rules.find_one(fallback_q, {"_id": 0})
-        if rule:
-            return _format_schedule(rule, assumed_engine=True if engine else False)
-
-    for eng_val in [None, ""]:
-        fallback_q = {**query, "engine": eng_val}
-        rule = await db.maintenance_schedule_rules.find_one(fallback_q, {"_id": 0})
-        if rule:
-            return _format_schedule(rule, assumed_engine=True if engine else False)
-
-    return {"maintenance_match": "unknown", "schedule_notes": None, "interval_km": None}
-
-
-def _format_schedule(rule, assumed_engine=False):
-    notes = rule.get("notes", "")
-    if assumed_engine:
-        notes += " (Engine type not specified; using general schedule.)"
-
-    return {
-        "maintenance_match": "due",
-        "interval_km": rule.get("interval_km") or rule.get("repeat_interval_km"),
-        "interval_months": rule.get("interval_months"),
-        "first_interval_km": rule.get("first_interval_km"),
-        "repeat_interval_km": rule.get("repeat_interval_km"),
-        "rule_type": rule.get("rule_type"),
-        "schedule_notes": notes,
-        "source": rule.get("source_name")
-    }
-
-
 # --- Full Analysis Pipeline ---
 
-async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle: dict):
+async def analyze_estimate_item(
+    db,
+    raw_text: str,
+    quoted_price: float,
+    vehicle: dict,
+    region_code: str = "CA",
+    schedule_code: str = "SCHEDULE_1",
+    current_mileage: int = None,
+):
     """Full analysis pipeline for a single estimate line item."""
     match = await match_service_key(db, raw_text)
     service_key = match["service_key"]
 
     classification = await get_classification(db, service_key)
 
-    schedule = await get_maintenance_schedule(
-        db, service_key,
+    # Use verdict engine for region-aware schedule analysis
+    verdict = await compute_verdict(
+        db,
+        service_key=service_key,
+        region_code=region_code,
         make=vehicle.get("make", ""),
         model=vehicle.get("model", ""),
         year=vehicle.get("year", 0),
+        schedule_code=schedule_code,
+        current_mileage=current_mileage,
         engine=vehicle.get("engine"),
-        region="Canada"
     )
 
     recommendation_code = classification["default_recommendation_code"]
     recommendation_text = classification.get("recommendation_text", "")
     user_explanation = classification.get("user_explanation", "")
 
-    if schedule.get("schedule_notes"):
-        user_explanation += f" Schedule: {schedule['schedule_notes']}"
+    verdict_explanation = verdict.get("explanation", "")
+    if verdict_explanation:
+        user_explanation += f" {verdict_explanation}"
+
+    # Determine interval value and unit from verdict
+    interval_value = verdict.get("interval_value")
+    interval_unit = verdict.get("interval_unit", "km")
 
     return {
         "raw_text": raw_text,
@@ -313,7 +284,19 @@ async def analyze_estimate_item(db, raw_text: str, quoted_price: float, vehicle:
         "benchmark_min_price": None,
         "benchmark_max_price": None,
         "price_assessment": "unknown",
-        "maintenance_match": schedule.get("maintenance_match", "unknown"),
-        "interval_km": schedule.get("interval_km"),
-        "schedule_notes": schedule.get("schedule_notes")
+        # Verdict fields
+        "region_code": region_code,
+        "schedule_used": verdict.get("schedule_used"),
+        "due_status": verdict.get("due_status", "unknown"),
+        "interval_value": interval_value,
+        "interval_unit": interval_unit,
+        "interval_km": interval_value if interval_unit == "km" else None,
+        "interval_miles": interval_value if interval_unit == "mi" else None,
+        "miles_remaining": verdict.get("miles_remaining"),
+        "trigger_type": verdict.get("trigger_type"),
+        "severe_only": verdict.get("severe_only", False),
+        "maintenance_match": verdict.get("due_status", "unknown"),
+        "schedule_notes": verdict.get("explanation", ""),
+        "source_reference": verdict.get("source_reference"),
+        "rule_trace": verdict.get("rule_trace"),
     }

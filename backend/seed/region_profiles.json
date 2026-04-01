@@ -1,0 +1,49 @@
+[
+  {
+    "region_code": "CA",
+    "country_name": "Canada",
+    "distance_unit": "km",
+    "currency_code": "CAD",
+    "currency_symbol": "$",
+    "location_levels": ["province", "city", "postal_code"],
+    "default_language": "en-CA",
+    "default_schedule_selection_logic": {
+      "normal_schedule_code": null,
+      "severe_schedule_code": null,
+      "default_oil_maintenance_mode": null,
+      "notes": ["Canada uses a single maintenance schedule from the owner's manual."]
+    },
+    "severe_driving_conditions": [],
+    "is_active": true
+  },
+  {
+    "region_code": "US",
+    "country_name": "United States",
+    "distance_unit": "mi",
+    "currency_code": "USD",
+    "currency_symbol": "$",
+    "location_levels": ["state", "city", "zip"],
+    "default_language": "en-US",
+    "default_schedule_selection_logic": {
+      "normal_schedule_code": "SCHEDULE_1",
+      "severe_schedule_code": "SCHEDULE_2",
+      "default_oil_maintenance_mode": "flexible",
+      "notes": [
+        "For U.S. residents, Engine Oil Flexible Maintenance is the default.",
+        "If severe driving conditions apply, use Schedule 2."
+      ]
+    },
+    "severe_driving_conditions": [
+      {"code": "REPEATED_SHORT_DISTANCE_DRIVING", "label": "Repeated short-distance driving"},
+      {"code": "DUSTY_CONDITIONS", "label": "Dusty conditions"},
+      {"code": "EXTENDED_BRAKE_USE", "label": "Extended brake use"},
+      {"code": "SALT_OR_CORROSIVE_MATERIALS", "label": "Salt or corrosive materials"},
+      {"code": "ROUGH_OR_MUDDY_ROADS", "label": "Rough or muddy roads"},
+      {"code": "EXTENDED_IDLING_OR_LOW_SPEED_OPERATION", "label": "Extended idling or low-speed operation"},
+      {"code": "COLD_OR_EXTREMELY_HUMID_CLIMATES", "label": "Long periods in cold or extremely humid climates"},
+      {"code": "EXTREMELY_HOT_CONDITIONS", "label": "Extremely hot conditions"},
+      {"code": "CONTINUAL_MOUNTAINOUS_DRIVING", "label": "Continual mountainous driving"}
+    ],
+    "is_active": true
+  }
+]

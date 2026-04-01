@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Search, Loader2, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Loader2, ArrowRight, ChevronDown, ChevronUp, Globe, Gauge } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -12,6 +13,9 @@ const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const MatchDebugPage = () => {
   const [inputText, setInputText] = useState('');
+  const [regionCode, setRegionCode] = useState('CA');
+  const [scheduleCode, setScheduleCode] = useState('SCHEDULE_1');
+  const [currentMileage, setCurrentMileage] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -22,9 +26,15 @@ const MatchDebugPage = () => {
     setLoading(true);
     setResult(null);
     try {
+      const payload = {
+        input_line_text: inputText.trim(),
+        region_code: regionCode,
+        schedule_code: scheduleCode,
+      };
+      if (currentMileage) payload.current_mileage = parseInt(currentMileage);
       const res = await axios.post(
         `${API_URL}/estimates/debug/match`,
-        { input_line_text: inputText.trim() },
+        payload,
         getAuthHeader()
       );
       setResult(res.data);
@@ -56,7 +66,7 @@ const MatchDebugPage = () => {
         </div>
 
         <Card className="rounded-sm border-border">
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-3">
             <div className="flex gap-2">
               <Input
                 data-testid="debug-input"
@@ -75,6 +85,39 @@ const MatchDebugPage = () => {
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={regionCode} onValueChange={(v) => { setRegionCode(v); if (v !== 'US') setScheduleCode('SCHEDULE_1'); }}>
+                <SelectTrigger data-testid="debug-region-select" className="rounded-sm w-40">
+                  <Globe className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" /><SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CA">Canada</SelectItem>
+                  <SelectItem value="US">United States</SelectItem>
+                </SelectContent>
+              </Select>
+              {regionCode === 'US' && (
+                <Select value={scheduleCode} onValueChange={setScheduleCode}>
+                  <SelectTrigger data-testid="debug-schedule-select" className="rounded-sm w-52">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SCHEDULE_1">Schedule 1 - Normal</SelectItem>
+                    <SelectItem value="SCHEDULE_2">Schedule 2 - Severe</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  data-testid="debug-mileage-input"
+                  type="number"
+                  placeholder={regionCode === 'US' ? 'Mileage (mi)' : 'Odometer (km)'}
+                  value={currentMileage}
+                  onChange={(e) => setCurrentMileage(e.target.value)}
+                  className="rounded-sm w-36 text-sm"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -139,6 +182,78 @@ const MatchDebugPage = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Verdict & Schedule */}
+            {result.verdict && (
+              <Card className="rounded-sm border-border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-heading flex items-center gap-2">
+                    Verdict
+                    <Badge variant="outline" className="text-[10px] rounded-sm">
+                      <Globe className="h-3 w-3 mr-0.5" />{result.region_code}
+                    </Badge>
+                    {result.schedule_code && result.region_code === 'US' && (
+                      <Badge variant="outline" className="text-[10px] rounded-sm">{result.schedule_code}</Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="due_status" value={result.verdict.due_status}>
+                      <Badge variant="outline" className={`text-[10px] rounded-sm ${
+                        result.verdict.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
+                        result.verdict.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                        result.verdict.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                        result.verdict.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
+                        'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+                      }`}>{result.verdict.due_status?.replace(/_/g, ' ')}</Badge>
+                    </Field>
+                    <Field label="schedule_used" value={result.verdict.schedule_used || 'N/A'} mono />
+                    <Field label="interval" value={result.verdict.interval_value != null ? `${result.verdict.interval_value?.toLocaleString()} ${result.distance_unit}` : 'N/A'} mono />
+                    {result.verdict.miles_remaining != null && (
+                      <Field label="remaining" value={`${result.verdict.miles_remaining?.toLocaleString()} ${result.distance_unit}`} mono />
+                    )}
+                    {result.verdict.trigger_type && (
+                      <Field label="trigger" value={result.verdict.trigger_type} mono />
+                    )}
+                    {result.verdict.severe_only && (
+                      <Field label="severe_only" value="true">
+                        <Badge variant="outline" className="text-[10px] rounded-sm bg-red-500/15 text-red-400">severe only</Badge>
+                      </Field>
+                    )}
+                  </div>
+                  {result.verdict.schedule_notes && (
+                    <div className="mt-3">
+                      <Field label="schedule_notes" value={result.verdict.schedule_notes} block />
+                    </div>
+                  )}
+                  {result.verdict.source_reference && (
+                    <div className="mt-2">
+                      <Field label="source" value={result.verdict.source_reference} block />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Rule Trace */}
+            {result.rule_trace && (
+              <Card className="rounded-sm border-border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-heading">Rule Trace</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="rules_found" value={result.rule_trace.rules_found} mono />
+                    <Field label="rule_selected" value={result.rule_trace.rule_selected || 'none'} mono />
+                    <Field label="engine_filter" value={result.rule_trace.engine_filter || 'none'} mono />
+                    <Field label="engine_matched" value={result.rule_trace.engine_matched || 'none'} mono />
+                    <Field label="schedule_code" value={result.rule_trace.schedule_code || 'N/A'} mono />
+                    <Field label="mileage_provided" value={result.rule_trace.mileage_provided ? 'yes' : 'no'} mono />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Raw JSON toggle */}
             <Button

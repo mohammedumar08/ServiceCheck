@@ -742,5 +742,85 @@
     "match_type": "contains",
     "priority": 100,
     "is_active": true
+  },
+  {
+    "synonym_text": "engine oil and filter",
+    "normalized_synonym_text": "engine oil and filter",
+    "service_key": "engine_oil_change",
+    "match_type": "exact",
+    "priority": 100,
+    "is_active": true
+  },
+  {
+    "synonym_text": "oil and filter",
+    "normalized_synonym_text": "oil and filter",
+    "service_key": "engine_oil_change",
+    "match_type": "exact",
+    "priority": 95,
+    "is_active": true
+  },
+  {
+    "synonym_text": "replace spark plugs",
+    "normalized_synonym_text": "replacement spark plug",
+    "service_key": "spark_plug_replacement",
+    "match_type": "contains",
+    "priority": 90,
+    "is_active": true
+  },
+  {
+    "synonym_text": "tune up",
+    "normalized_synonym_text": "tune up",
+    "service_key": "spark_plug_replacement",
+    "match_type": "contains",
+    "priority": 70,
+    "is_active": true
+  },
+  {
+    "synonym_text": "coolant replacement",
+    "normalized_synonym_text": "coolant replacement",
+    "service_key": "engine_coolant_replacement",
+    "match_type": "exact",
+    "priority": 95,
+    "is_active": true
+  },
+  {
+    "synonym_text": "radiator coolant",
+    "normalized_synonym_text": "radiator coolant",
+    "service_key": "engine_coolant_replacement",
+    "match_type": "contains",
+    "priority": 80,
+    "is_active": true
+  },
+  {
+    "synonym_text": "replace cabin filter",
+    "normalized_synonym_text": "replacement cabin filter",
+    "service_key": "cabin_air_filter_replacement",
+    "match_type": "contains",
+    "priority": 85,
+    "is_active": true
+  },
+  {
+    "synonym_text": "transmission fluid service",
+    "normalized_synonym_text": "transmission fluid service",
+    "service_key": "transmission_fluid_change",
+    "match_type": "exact",
+    "priority": 95,
+    "is_active": true
+  },
+  {
+    "synonym_text": "fuel induction service",
+    "normalized_synonym_text": "fuel induction service",
+    "service_key": "induction_service",
+    "match_type": "exact",
+    "priority": 100,
+    "is_active": true
+  },
+  {
+    "synonym_text": "rotate tires",
+    "normalized_synonym_text": "rotation tire",
+    "service_key": "tire_rotation",
+    "match_type": "contains",
+    "priority": 90,
+    "is_active": true
   }
 ]

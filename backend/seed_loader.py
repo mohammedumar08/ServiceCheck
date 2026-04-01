@@ -34,23 +34,32 @@ async def run_seed(db: AsyncIOMotorDatabase):
         lambda r: {"normalized_synonym_text": r["normalized_synonym_text"], "service_key": r["service_key"]}
     )
 
-    # maintenance_schedule_rules: unique on make+model+year+region+service_key+engine
+    # maintenance_schedule_rules: unique on rule_id
     n3 = await seed_collection(
         db, "maintenance_schedule_rules", "maintenance_schedule_rules.json",
-        lambda r: {
-            "make": r["make"],
-            "model": r["model"],
-            "year": r["year"],
-            "region": r["region"],
-            "service_key": r["service_key"],
-            "engine": r.get("engine") or ""
-        }
+        lambda r: {"rule_id": r["rule_id"]}
     )
 
-    print(f"Seed complete: {n1} classification rules, {n2} synonyms, {n3} maintenance rules")
+    # region_profiles: unique on region_code
+    n4 = await seed_collection(
+        db, "region_profiles", "region_profiles.json",
+        lambda r: {"region_code": r["region_code"]}
+    )
+
+    print(f"Seed complete: {n1} classification rules, {n2} synonyms, {n3} maintenance rules, {n4} region profiles")
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase):
+    # Clean up old maintenance rules without rule_id (migration)
+    await db.maintenance_schedule_rules.delete_many({"rule_id": {"$exists": False}})
+    await db.maintenance_schedule_rules.delete_many({"rule_id": None})
+
+    # Drop old indexes that may conflict
+    try:
+        await db.maintenance_schedule_rules.drop_index("make_1_model_1_year_1_region_1_service_key_1_engine_1")
+    except Exception:
+        pass
+
     # Classification rules
     await db.service_classification_rules.create_index("service_key", unique=True)
 
@@ -61,9 +70,13 @@ async def ensure_indexes(db: AsyncIOMotorDatabase):
     await db.service_synonyms.create_index("match_type")
 
     # Maintenance schedule rules
+    await db.maintenance_schedule_rules.create_index("rule_id", unique=True)
     await db.maintenance_schedule_rules.create_index(
-        [("make", 1), ("model", 1), ("year", 1), ("region", 1), ("service_key", 1), ("engine", 1)]
+        [("make", 1), ("model", 1), ("year", 1), ("region", 1), ("service_key", 1), ("engine", 1), ("schedule_code", 1)]
     )
+
+    # Region profiles
+    await db.region_profiles.create_index("region_code", unique=True)
 
     # Repair estimates
     await db.repair_estimates.create_index("user_id")

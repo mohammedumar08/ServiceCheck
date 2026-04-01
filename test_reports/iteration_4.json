@@ -1,0 +1,96 @@
+{
+  "summary": "Tested US region feature for Car Service Tracker. All 19 backend API tests pass. Frontend UI tests pass for Match Debug page (region/schedule/mileage controls, verdict/rule trace display) and Estimates page (region selector, US schedule options in upload dialog).",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "passed_tests": [
+    "GET /api/estimates/region-profiles returns 200",
+    "GET /api/estimates/region-profiles contains CA and US profiles",
+    "CA profile has distance_unit=km, currency_code=CAD",
+    "US profile has distance_unit=mi, currency_code=USD",
+    "US profile has schedule_selection_logic with SCHEDULE_1/SCHEDULE_2",
+    "GET /api/estimates/supported-vehicles returns 200",
+    "Supported vehicles have 'regions' array",
+    "Mazda CX-5 2022 has both CA and US regions",
+    "POST /api/estimates/debug/match US tire rotation Schedule 1 at 42000mi returns due_status=not_due, interval=7500mi, remaining=3000mi",
+    "POST /api/estimates/debug/match US oil change returns due_status=condition_based, trigger_type=wrench_indicator_on",
+    "POST /api/estimates/debug/match US spark plug returns correct rule",
+    "POST /api/estimates/debug/match US coolant flush returns first_then_recurring verdict",
+    "POST /api/estimates/debug/match US Schedule 2 tire rotation returns 5000mi interval, severe_only=true",
+    "POST /api/estimates/debug/match CA tire rotation returns 8000km interval",
+    "Debug endpoint returns rule_trace with rules_found, rule_selected, schedule_code, engine_filter",
+    "Debug endpoint returns verdict with due_status, schedule_used, interval_value, interval_unit",
+    "Region profiles requires authentication (401)",
+    "Supported vehicles requires authentication (401)",
+    "Debug match requires authentication (401)",
+    "Frontend: Match Debug page has region selector (Canada/United States)",
+    "Frontend: Match Debug page shows schedule selector when US selected",
+    "Frontend: Match Debug page has mileage input",
+    "Frontend: Match Debug page shows Verdict card after query",
+    "Frontend: Match Debug page shows Rule Trace card after query",
+    "Frontend: Match Debug page displays due_status correctly",
+    "Frontend: Estimates page upload dialog has region selector",
+    "Frontend: Estimates page shows US Schedule Options when US selected",
+    "Frontend: Estimates page has mileage input for US region",
+    "Frontend: Estimates page has schedule selector (Schedule 1/Schedule 2) for US"
+  ],
+  
+  "test_report_links": [
+    "/app/backend/tests/test_region_feature.py",
+    "/app/test_reports/pytest/region_feature_results.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "verdict_engine.py correctly implements due_status calculation for recurring, flexible, first_then_recurring, and milestone_replace interval types",
+    "estimate_analyzer.py properly integrates with verdict_engine for region-aware analysis",
+    "estimates.py router correctly handles region_code, schedule_code, current_mileage parameters",
+    "Frontend MatchDebugPage correctly shows/hides schedule selector based on region",
+    "Frontend EstimatesPage upload dialog correctly shows US-specific options",
+    "Frontend EstimateDetailPage has region badge and due_status display (will show for supported vehicles with region data)"
+  ],
+  
+  "updated_files": [
+    "/app/backend/tests/test_region_feature.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (all UI elements working)"
+  },
+  
+  "test_credentials": {
+    "existing_user": "email=test@test.com, password=test123"
+  },
+  
+  "seed_data_creation": "None - used existing test user and seeded maintenance rules",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  
+  "context_for_next_testing_agent": "US region feature fully tested. Backend APIs (region-profiles, supported-vehicles, debug/match with region params) all working. Frontend UI (Match Debug page with region/schedule/mileage controls, Estimates page upload dialog with region selector and US options) all working. The existing estimate in the system is for a 2020 Toyota Camry which is not a supported vehicle, so region badge and due_status won't show for it. Only Mazda CX-5 2022 is currently supported with maintenance rules for both CA and US regions.",
+  
+  "feature_verification": {
+    "region_profiles_endpoint": {
+      "CA": {"distance_unit": "km", "currency_code": "CAD"},
+      "US": {"distance_unit": "mi", "currency_code": "USD", "schedules": ["SCHEDULE_1", "SCHEDULE_2"]}
+    },
+    "supported_vehicles": {
+      "Mazda CX-5 2022": {"regions": ["CA", "US"]}
+    },
+    "verdict_engine_due_status_values": ["due_now", "due_soon", "not_due", "condition_based", "schedule_known", "completed", "inspection", "unknown"],
+    "us_schedule_1_tire_rotation": {"interval_miles": 7500},
+    "us_schedule_2_tire_rotation": {"interval_miles": 5000, "severe_only": true},
+    "ca_tire_rotation": {"interval_km": 8000}
+  }
+}
