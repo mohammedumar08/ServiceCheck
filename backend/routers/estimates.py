@@ -44,6 +44,20 @@ class EstimateItemUpdate(BaseModel):
     recommendation: Optional[str] = None
 
 
+class ReanalyzeRequest(BaseModel):
+    schedule_code: str = "SCHEDULE_1"
+
+
+class ClaimRequest(BaseModel):
+    guest_token: str
+
+
+class ConvertItemsRequest(BaseModel):
+    item_ids: list[str] = []
+    vehicle_id: str | None = None
+    create_vehicle: bool = False
+
+
 def _detect_region_from_ocr(ocr_data: dict) -> Optional[str]:
     """Detect region from OCR output by checking for currency, zip codes, etc."""
     raw = (ocr_data.get("raw_text_summary", "") + " " + (ocr_data.get("provider") or "")).lower()
@@ -263,10 +277,6 @@ async def guest_reanalyze(estimate_id: str, guest_token: str = Query(...), body:
         {"id": estimate_id}, {"$set": {"schedule_code": body.schedule_code, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"estimate": {**estimate, "schedule_code": body.schedule_code}, "items": updated_items, "summary": _build_summary(updated_items)}
-
-
-class ClaimRequest(BaseModel):
-    guest_token: str
 
 
 @router.post("/public/claim/{estimate_id}")
@@ -547,10 +557,6 @@ async def update_estimate_item(
     return item
 
 
-class ReanalyzeRequest(BaseModel):
-    schedule_code: str = "SCHEDULE_1"
-
-
 @router.post("/{estimate_id}/reanalyze")
 async def reanalyze_estimate(
     estimate_id: str,
@@ -618,12 +624,6 @@ async def reanalyze_estimate(
         "items": updated_items,
         "summary": _build_summary(updated_items),
     }
-
-
-class ConvertItemsRequest(BaseModel):
-    item_ids: list[str] = []
-    vehicle_id: str | None = None
-    create_vehicle: bool = False
 
 
 @router.post("/{estimate_id}/convert")

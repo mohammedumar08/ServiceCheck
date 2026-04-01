@@ -13,6 +13,8 @@ import RemindersPage from "./pages/RemindersPage";
 import ExportPage from "./pages/ExportPage";
 import EstimatesPage from "./pages/EstimatesPage";
 import EstimateDetailPage from "./pages/EstimateDetailPage";
+import PublicEstimateCheckerPage from "./pages/PublicEstimateCheckerPage";
+import PublicEstimateResultPage from "./pages/PublicEstimateResultPage";
 import MatchDebugPage from "./pages/MatchDebugPage";
 import "./App.css";
 
@@ -42,6 +44,7 @@ const ProtectedRoute = ({ children }) => {
 
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   
   if (loading) {
     return (
@@ -51,8 +54,11 @@ const PublicRoute = ({ children }) => {
     );
   }
   
+  // If user is logged in and there's a returnTo param, redirect there instead of dashboard
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    const params = new URLSearchParams(location.search);
+    const returnTo = params.get('returnTo');
+    return <Navigate to={returnTo || '/dashboard'} replace />;
   }
   
   return children;
@@ -79,6 +85,8 @@ const AppRouter = () => {
       <Route path="/export" element={<ProtectedRoute><ExportPage /></ProtectedRoute>} />
       <Route path="/estimates" element={<ProtectedRoute><EstimatesPage /></ProtectedRoute>} />
       <Route path="/estimates/:id" element={<ProtectedRoute><EstimateDetailPage /></ProtectedRoute>} />
+      <Route path="/estimate-checker" element={<PublicEstimateCheckerPage />} />
+      <Route path="/estimate-checker/:id" element={<PublicEstimateResultPage />} />
       <Route path="/match-debug" element={<ProtectedRoute><MatchDebugPage /></ProtectedRoute>} />
     </Routes>
   );

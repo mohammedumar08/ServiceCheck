@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Wrench, Mail, Lock, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -36,6 +36,8 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,7 +50,7 @@ const LoginPage = () => {
     try {
       await login(email, password);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      navigate(returnTo || '/dashboard');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Login failed');
       setLoading(false);
@@ -153,7 +155,7 @@ const LoginPage = () => {
               <p className="text-sm text-muted-foreground">
                 Don't have an account?{' '}
                 <Link 
-                  to="/register" 
+                  to={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : '/register'} 
                   className="text-primary font-semibold hover:underline"
                   data-testid="login-register-link"
                 >

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Wrench, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -36,6 +36,8 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { register, loginWithGoogle } = useAuth();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,8 +54,7 @@ const RegisterPage = () => {
     try {
       await register(email, password, name);
       toast.success('Account created successfully!');
-      // Use window.location for hard redirect to ensure state is fresh
-      window.location.href = '/dashboard';
+      window.location.href = returnTo || '/dashboard';
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Registration failed');
       setLoading(false);
@@ -174,7 +175,7 @@ const RegisterPage = () => {
               <p className="text-sm text-muted-foreground">
                 Already have an account?{' '}
                 <Link 
-                  to="/login" 
+                  to={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login'} 
                   className="text-primary font-semibold hover:underline"
                   data-testid="register-login-link"
                 >

@@ -114,7 +114,7 @@ const LandingPage = () => {
                 <Button
                   data-testid="hero-get-started-btn"
                   size="lg"
-                  onClick={() => navigate(user ? '/estimates' : '/register')}
+                  onClick={() => navigate('/estimate-checker')}
                   className="rounded-sm font-heading font-bold uppercase tracking-wider text-base px-8"
                 >
                   Check an Estimate
@@ -275,7 +275,7 @@ const LandingPage = () => {
               <Button
                 data-testid="cta-get-started-btn"
                 size="lg"
-                onClick={() => navigate(user ? '/estimates' : '/register')}
+                onClick={() => navigate('/estimate-checker')}
                 className="rounded-sm font-heading font-bold uppercase tracking-wider"
               >
                 Get Started Free
