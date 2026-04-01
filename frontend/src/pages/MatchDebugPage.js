@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Loader2, ArrowRight, ChevronDown, ChevronUp, Globe, Gauge } from 'lucide-react';
+import { Search, Loader2, ArrowRight, ChevronDown, ChevronUp, Globe, Gauge, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -32,11 +32,7 @@ const MatchDebugPage = () => {
         schedule_code: scheduleCode,
       };
       if (currentMileage) payload.current_mileage = parseInt(currentMileage);
-      const res = await axios.post(
-        `${API_URL}/estimates/debug/match`,
-        payload,
-        getAuthHeader()
-      );
+      const res = await axios.post(`${API_URL}/estimates/debug/match`, payload, getAuthHeader());
       setResult(res.data);
     } catch (err) {
       setResult({ error: err.response?.data?.detail || 'Request failed' });
@@ -57,12 +53,19 @@ const MatchDebugPage = () => {
     cannot_determine: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
   }[code] || 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30');
 
+  const dueColor = (status) => ({
+    due_now: 'bg-red-500/15 text-red-400 border-red-500/30',
+    due_soon: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    not_due: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    condition_based: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  }[status] || 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30');
+
   return (
     <DashboardLayout>
       <div data-testid="match-debug-page" className="space-y-6 max-w-3xl">
         <div>
           <h1 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">Match Debugger</h1>
-          <p className="text-muted-foreground mt-1">Paste a dealer estimate line to see how the matching pipeline processes it.</p>
+          <p className="text-muted-foreground mt-1">Paste a dealer estimate line to see the full matching + verdict pipeline.</p>
         </div>
 
         <Card className="rounded-sm border-border">
@@ -77,12 +80,7 @@ const MatchDebugPage = () => {
                 className="rounded-sm font-mono text-sm"
                 disabled={loading}
               />
-              <Button
-                data-testid="debug-submit-btn"
-                onClick={handleTest}
-                disabled={loading || !inputText.trim()}
-                className="rounded-sm shrink-0"
-              >
+              <Button data-testid="debug-submit-btn" onClick={handleTest} disabled={loading || !inputText.trim()} className="rounded-sm shrink-0">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
             </div>
@@ -102,8 +100,8 @@ const MatchDebugPage = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="SCHEDULE_1">Schedule 1 - Normal</SelectItem>
-                    <SelectItem value="SCHEDULE_2">Schedule 2 - Severe</SelectItem>
+                    <SelectItem value="SCHEDULE_1">Normal driving</SelectItem>
+                    <SelectItem value="SCHEDULE_2">Severe conditions</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -132,9 +130,7 @@ const MatchDebugPage = () => {
           <div className="space-y-4">
             {/* Pipeline Steps */}
             <Card className="rounded-sm border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-heading">Pipeline Steps</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Pipeline Steps</CardTitle></CardHeader>
               <CardContent className="p-4 pt-0 space-y-3">
                 <Step num="1" label="Input" value={result.input_line_text} />
                 <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto" />
@@ -150,24 +146,20 @@ const MatchDebugPage = () => {
               </CardContent>
             </Card>
 
-            {/* Result */}
+            {/* Classification */}
             <Card className="rounded-sm border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-heading">Classification Result</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Classification Result</CardTitle></CardHeader>
               <CardContent className="p-4 pt-0">
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="service_key" value={result.match.service_key || 'null'} mono muted={!result.match.service_key} />
                   <Field label="display_name" value={result.classification.display_name || 'null'} muted={!result.classification.display_name} />
                   <Field label="category" value={result.classification.category}>
-                    <span className={`font-medium capitalize ${catColor(result.classification.category)}`}>
-                      {result.classification.category}
-                    </span>
+                    <span className={`font-medium capitalize ${catColor(result.classification.category)}`}>{result.classification.category}</span>
                   </Field>
                   <Field label="severity" value={result.classification.severity}>
                     <span className="font-medium capitalize">{result.classification.severity}</span>
                   </Field>
-                  <Field label="default_recommendation_code" value={result.classification.default_recommendation_code}>
+                  <Field label="recommendation" value={result.classification.default_recommendation_code}>
                     <Badge variant="outline" className={`text-[10px] rounded-sm ${recColor(result.classification.default_recommendation_code)}`}>
                       {result.classification.default_recommendation_code}
                     </Badge>
@@ -176,62 +168,41 @@ const MatchDebugPage = () => {
                 <div className="mt-4 space-y-3">
                   <Field label="recommendation_text" value={result.classification.recommendation_text || 'null'} block />
                   <Field label="user_explanation" value={result.classification.user_explanation || 'null'} block />
-                  {result.classification.description && (
-                    <Field label="description" value={result.classification.description} block />
-                  )}
+                  {result.classification.description && <Field label="description" value={result.classification.description} block />}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Verdict & Schedule */}
+            {/* Verdict */}
             {result.verdict && (
               <Card className="rounded-sm border-border">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-heading flex items-center gap-2">
                     Verdict
-                    <Badge variant="outline" className="text-[10px] rounded-sm">
-                      <Globe className="h-3 w-3 mr-0.5" />{result.region_code}
-                    </Badge>
-                    {result.schedule_code && result.region_code === 'US' && (
-                      <Badge variant="outline" className="text-[10px] rounded-sm">{result.schedule_code}</Badge>
-                    )}
+                    <Badge variant="outline" className="text-[10px] rounded-sm"><Globe className="h-3 w-3 mr-0.5" />{result.region_code}</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="due_status" value={result.verdict.due_status}>
-                      <Badge variant="outline" className={`text-[10px] rounded-sm ${
-                        result.verdict.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
-                        result.verdict.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
-                        result.verdict.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
-                        result.verdict.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
-                        'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
-                      }`}>{result.verdict.due_status?.replace(/_/g, ' ')}</Badge>
+                      <Badge variant="outline" className={`text-[10px] rounded-sm ${dueColor(result.verdict.due_status)}`}>
+                        <Clock className="h-3 w-3 mr-0.5" />{result.verdict.due_status?.replace(/_/g, ' ')}
+                      </Badge>
                     </Field>
                     <Field label="schedule_used" value={result.verdict.schedule_used || 'N/A'} mono />
                     <Field label="interval" value={result.verdict.interval_value != null ? `${result.verdict.interval_value?.toLocaleString()} ${result.distance_unit}` : 'N/A'} mono />
                     {result.verdict.miles_remaining != null && (
                       <Field label="remaining" value={`${result.verdict.miles_remaining?.toLocaleString()} ${result.distance_unit}`} mono />
                     )}
-                    {result.verdict.trigger_type && (
-                      <Field label="trigger" value={result.verdict.trigger_type} mono />
-                    )}
+                    {result.verdict.trigger_type && <Field label="trigger" value={result.verdict.trigger_type} mono />}
                     {result.verdict.severe_only && (
                       <Field label="severe_only" value="true">
                         <Badge variant="outline" className="text-[10px] rounded-sm bg-red-500/15 text-red-400">severe only</Badge>
                       </Field>
                     )}
                   </div>
-                  {result.verdict.schedule_notes && (
-                    <div className="mt-3">
-                      <Field label="schedule_notes" value={result.verdict.schedule_notes} block />
-                    </div>
-                  )}
-                  {result.verdict.source_reference && (
-                    <div className="mt-2">
-                      <Field label="source" value={result.verdict.source_reference} block />
-                    </div>
-                  )}
+                  {result.verdict.schedule_notes && <div className="mt-3"><Field label="schedule_notes" value={result.verdict.schedule_notes} block /></div>}
+                  {result.verdict.source_reference && <div className="mt-2"><Field label="source" value={result.verdict.source_reference} block /></div>}
                 </CardContent>
               </Card>
             )}
@@ -239,9 +210,7 @@ const MatchDebugPage = () => {
             {/* Rule Trace */}
             {result.rule_trace && (
               <Card className="rounded-sm border-border">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-heading">Rule Trace</CardTitle>
-                </CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Rule Trace</CardTitle></CardHeader>
                 <CardContent className="p-4 pt-0">
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="rules_found" value={result.rule_trace.rules_found} mono />
@@ -255,13 +224,22 @@ const MatchDebugPage = () => {
               </Card>
             )}
 
-            {/* Raw JSON toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground text-xs"
-              onClick={() => setShowRaw(!showRaw)}
-            >
+            {/* Inferred Logic */}
+            {result.inferred_logic && (
+              <Card className="rounded-sm border-border">
+                <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Inferred Logic</CardTitle></CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="default_schedule_applied" value={result.inferred_logic.default_schedule_applied} mono />
+                    <Field label="user_selected_schedule" value={result.inferred_logic.user_selected_schedule || 'null'} mono muted={!result.inferred_logic.user_selected_schedule} />
+                    <Field label="logic" value={result.inferred_logic.logic} mono />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Raw JSON */}
+            <Button variant="ghost" size="sm" className="text-muted-foreground text-xs" onClick={() => setShowRaw(!showRaw)}>
               {showRaw ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
               Raw JSON
             </Button>
@@ -288,7 +266,7 @@ const Step = ({ num, label, value, mono }) => (
 );
 
 const Field = ({ label, value, mono, muted, block, children }) => (
-  <div className={block ? '' : ''}>
+  <div>
     <p className="text-xs text-muted-foreground uppercase tracking-wider font-mono">{label}</p>
     {children || (
       <p className={`text-sm mt-0.5 ${mono ? 'font-mono' : ''} ${muted ? 'text-muted-foreground italic' : ''}`}>{value}</p>

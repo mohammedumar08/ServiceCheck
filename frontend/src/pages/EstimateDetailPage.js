@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, FileSearch, CheckCircle2, AlertTriangle, HelpCircle, XCircle,
-  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2, ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle, Globe, Clock, Gauge
+  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2,
+  ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle, Globe, Clock, Gauge, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -45,10 +46,10 @@ const EstimateDetailPage = () => {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [drivingMode, setDrivingMode] = useState('normal'); // 'normal' or 'severe'
 
-  useEffect(() => {
-    fetchEstimate();
-  }, [id]);
+  useEffect(() => { fetchEstimate(); }, [id]);
 
   const fetchEstimate = async () => {
     try {
@@ -58,11 +59,35 @@ const EstimateDetailPage = () => {
       ]);
       setData(estRes.data);
       setVehicles(vehRes.data || []);
-    } catch (err) {
+      // Sync driving mode with stored schedule
+      const sc = estRes.data?.estimate?.schedule_code;
+      setDrivingMode(sc === 'SCHEDULE_2' ? 'severe' : 'normal');
+    } catch {
       toast.error('Failed to load estimate');
       navigate('/estimates');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDrivingModeChange = async (mode) => {
+    if (mode === drivingMode || reanalyzing) return;
+    setDrivingMode(mode);
+    setReanalyzing(true);
+    try {
+      const scheduleCode = mode === 'severe' ? 'SCHEDULE_2' : 'SCHEDULE_1';
+      const res = await axios.post(
+        `${API_URL}/estimates/${id}/reanalyze`,
+        { schedule_code: scheduleCode },
+        getAuthHeader()
+      );
+      setData(res.data);
+      toast.success(mode === 'severe' ? 'Updated for severe driving conditions' : 'Updated for normal driving');
+    } catch {
+      toast.error('Failed to update analysis');
+      setDrivingMode(drivingMode === 'severe' ? 'normal' : 'severe'); // revert
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -77,30 +102,19 @@ const EstimateDetailPage = () => {
 
   const selectAll = () => {
     const convertable = (data?.items || []).filter((i) => !i.converted_to_service);
-    if (selectedItems.size === convertable.length) {
-      setSelectedItems(new Set());
-    } else {
-      setSelectedItems(new Set(convertable.map((i) => i.id)));
-    }
+    if (selectedItems.size === convertable.length) setSelectedItems(new Set());
+    else setSelectedItems(new Set(convertable.map((i) => i.id)));
   };
 
   const handleConvert = async (createVehicle = false) => {
-    if (selectedItems.size === 0) {
-      toast.error('Select at least one item');
-      return;
-    }
+    if (selectedItems.size === 0) { toast.error('Select at least one item'); return; }
     setConverting(true);
     try {
-      const payload = {
+      await axios.post(`${API_URL}/estimates/${id}/convert`, {
         item_ids: Array.from(selectedItems),
         vehicle_id: selectedVehicleId || null,
         create_vehicle: createVehicle,
-      };
-      await axios.post(
-        `${API_URL}/estimates/${id}/convert`,
-        payload,
-        getAuthHeader()
-      );
+      }, getAuthHeader());
       toast.success(`${selectedItems.size} item(s) converted to service records`);
       setSelectedItems(new Set());
       setShowConvertDialog(false);
@@ -114,18 +128,10 @@ const EstimateDetailPage = () => {
   };
 
   const openConvertFlow = () => {
-    if (selectedItems.size === 0) {
-      toast.error('Select at least one item');
-      return;
-    }
-    // Check if user has a matching vehicle
+    if (selectedItems.size === 0) { toast.error('Select at least one item'); return; }
     const est = data?.estimate;
-    const matchingVehicle = vehicles.find(
-      (v) => v.make === est?.make && v.model === est?.model
-    );
-    if (matchingVehicle) {
-      setSelectedVehicleId(matchingVehicle.id);
-    }
+    const match = vehicles.find((v) => v.make === est?.make && v.model === est?.model);
+    if (match) setSelectedVehicleId(match.id);
     setShowConvertDialog(true);
   };
 
@@ -142,25 +148,18 @@ const EstimateDetailPage = () => {
   if (!data) return null;
 
   const { estimate, items, summary } = data;
-  const currSymbol = estimate.currency_code === 'USD' ? '$' : 'C$';
-  const distUnit = estimate.distance_unit || 'km';
+  const distUnit = estimate.distance_unit || (estimate.region_code === 'US' ? 'mi' : 'km');
+  const isUS = estimate.region_code === 'US';
   const recConfig = (rec) => RECOMMENDATION_CONFIG[rec] || RECOMMENDATION_CONFIG.cannot_determine;
   const catConfig = (cat) => CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.unknown;
 
   return (
     <DashboardLayout>
       <div data-testid="estimate-detail-page" className="space-y-6">
-        {/* Back Button + Header */}
+        {/* Back + Header */}
         <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/estimates')}
-            className="mb-3 -ml-2 text-muted-foreground"
-            data-testid="back-to-estimates-btn"
-          >
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Back to Estimates
+          <Button variant="ghost" size="sm" onClick={() => navigate('/estimates')} className="mb-3 -ml-2 text-muted-foreground" data-testid="back-to-estimates-btn">
+            <ArrowLeft className="mr-1 h-4 w-4" /> Back to Estimates
           </Button>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -175,16 +174,13 @@ const EstimateDetailPage = () => {
                 {estimate.region_code && (
                   <Badge variant="outline" className="text-[10px] rounded-sm">
                     <Globe className="h-3 w-3 mr-1" />
-                    Based on {estimate.region_code === 'US' ? 'US' : 'Canadian'} schedule
-                    {estimate.schedule_code && estimate.region_code === 'US' && (
-                      <span className="ml-1 opacity-70">({estimate.schedule_code === 'SCHEDULE_2' ? 'Severe' : 'Normal'})</span>
-                    )}
+                    {isUS ? 'United States' : 'Canada'}
                   </Badge>
                 )}
                 {estimate.current_mileage && (
                   <Badge variant="outline" className="text-[10px] rounded-sm">
                     <Gauge className="h-3 w-3 mr-1" />
-                    {estimate.current_mileage.toLocaleString()} {estimate.distance_unit || 'km'}
+                    {estimate.current_mileage.toLocaleString()} {distUnit}
                   </Badge>
                 )}
               </div>
@@ -198,6 +194,54 @@ const EstimateDetailPage = () => {
           </div>
         </div>
 
+        {/* Detected Region Banner */}
+        {estimate.detected_region && estimate.detected_region !== estimate.region_code && (
+          <Card className="rounded-sm border-amber-500/30 bg-amber-500/5">
+            <CardContent className="p-3 flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+              <p className="text-sm text-amber-300">
+                We detected <strong>{estimate.detected_region === 'US' ? 'United States' : 'Canada'}</strong> from your estimate.
+                You may want to re-upload with the correct region selected.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Driving Conditions Toggle (US only) */}
+        {isUS && (
+          <Card className="rounded-sm border-border">
+            <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Car className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Driving Conditions</span>
+                {reanalyzing && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+              </div>
+              <div className="flex gap-2" data-testid="driving-conditions-toggle">
+                <Button
+                  variant={drivingMode === 'normal' ? 'default' : 'outline'}
+                  size="sm"
+                  className="rounded-sm text-xs"
+                  onClick={() => handleDrivingModeChange('normal')}
+                  disabled={reanalyzing}
+                  data-testid="driving-mode-normal"
+                >
+                  Normal driving
+                </Button>
+                <Button
+                  variant={drivingMode === 'severe' ? 'default' : 'outline'}
+                  size="sm"
+                  className="rounded-sm text-xs"
+                  onClick={() => handleDrivingModeChange('severe')}
+                  disabled={reanalyzing}
+                  data-testid="driving-mode-severe"
+                >
+                  Short trips / extreme conditions
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
@@ -206,12 +250,7 @@ const EstimateDetailPage = () => {
             { label: 'Not Required', count: summary.not_required_count, amount: summary.not_required_total, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
             { label: 'Total Items', count: summary.total_items, amount: summary.total_quoted_amount, color: 'text-primary', bg: 'bg-primary/10' },
           ].map((card, idx) => (
-            <motion.div
-              key={card.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.06 }}
-            >
+            <motion.div key={card.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.06 }}>
               <Card className="rounded-sm border-border">
                 <CardContent className="p-4">
                   <p className={`text-xs uppercase tracking-wider font-medium ${card.color}`}>{card.label}</p>
@@ -233,33 +272,15 @@ const EstimateDetailPage = () => {
                 <ArrowRightLeft className="h-5 w-5 text-primary" />
                 <div>
                   <p className="font-medium text-sm">Convert to Service Records</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedItems.size} item(s) selected
-                  </p>
+                  <p className="text-xs text-muted-foreground">{selectedItems.size} item(s) selected</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-sm"
-                  onClick={selectAll}
-                  data-testid="select-all-items-btn"
-                >
+                <Button variant="outline" size="sm" className="rounded-sm" onClick={selectAll} data-testid="select-all-items-btn">
                   {selectedItems.size === items.filter((i) => !i.converted_to_service).length ? 'Deselect All' : 'Select All'}
                 </Button>
-                <Button
-                  size="sm"
-                  className="rounded-sm font-heading font-bold uppercase tracking-wider"
-                  onClick={openConvertFlow}
-                  disabled={converting || selectedItems.size === 0}
-                  data-testid="convert-items-btn"
-                >
-                  {converting ? (
-                    <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Converting...</>
-                  ) : (
-                    'Convert Selected'
-                  )}
+                <Button size="sm" className="rounded-sm font-heading font-bold uppercase tracking-wider" onClick={openConvertFlow} disabled={converting || selectedItems.size === 0} data-testid="convert-items-btn">
+                  {converting ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Converting...</> : 'Convert Selected'}
                 </Button>
               </div>
             </CardContent>
@@ -276,42 +297,34 @@ const EstimateDetailPage = () => {
             const RecIcon = rec.icon;
 
             return (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.03 }}
-              >
-                <Card
-                  className={`rounded-sm border-border transition-colors ${item.converted_to_service ? 'opacity-60' : ''}`}
-                  data-testid={`estimate-item-${item.id}`}
-                >
+              <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.03 }}>
+                <Card className={`rounded-sm border-border transition-colors ${item.converted_to_service ? 'opacity-60' : ''}`} data-testid={`estimate-item-${item.id}`}>
                   <CardContent className="p-0">
-                    {/* Main Row */}
                     <div className="flex items-center gap-3 p-4 cursor-pointer" onClick={() => setExpandedItem(isExpanded ? null : item.id)}>
                       {!item.converted_to_service && (
-                        <Checkbox
-                          checked={selectedItems.has(item.id)}
-                          onCheckedChange={() => toggleItem(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          data-testid={`checkbox-item-${item.id}`}
-                          className="shrink-0"
-                        />
+                        <Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItem(item.id)} onClick={(e) => e.stopPropagation()} data-testid={`checkbox-item-${item.id}`} className="shrink-0" />
                       )}
-                      {item.converted_to_service && (
-                        <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-                      )}
+                      {item.converted_to_service && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />}
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{item.display_name || item.raw_text}</span>
                           <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${rec.color}`}>
-                            <RecIcon className="h-3 w-3 mr-0.5" />
-                            {rec.label}
+                            <RecIcon className="h-3 w-3 mr-0.5" />{rec.label}
                           </Badge>
-                          <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${cat.color}`}>
-                            {cat.label}
-                          </Badge>
+                          <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${cat.color}`}>{cat.label}</Badge>
+                          {item.due_status && item.due_status !== 'unknown' && item.due_status !== 'schedule_known' && (
+                            <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${
+                              item.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
+                              item.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                              item.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                              item.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
+                              'bg-zinc-500/15 text-zinc-400'
+                            }`}>
+                              <Clock className="h-3 w-3 mr-0.5" />
+                              {item.due_status === 'condition_based' ? 'oil life' : item.due_status.replace(/_/g, ' ')}
+                            </Badge>
+                          )}
                         </div>
                         {item.raw_text !== item.display_name && item.display_name && (
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">Original: {item.raw_text}</p>
@@ -319,14 +332,11 @@ const EstimateDetailPage = () => {
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="font-mono font-bold">
-                          ${(item.quoted_price || 0).toFixed(2)}
-                        </span>
+                        <span className="font-mono font-bold">${(item.quoted_price || 0).toFixed(2)}</span>
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </div>
                     </div>
 
-                    {/* Expanded Details */}
                     {isExpanded && (
                       <div className="px-4 pb-4 pt-0 border-t border-border/50 mt-0">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
@@ -357,27 +367,6 @@ const EstimateDetailPage = () => {
                             )}
                           </div>
                           <div className="space-y-2">
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Severity</p>
-                              <p className="text-sm font-medium mt-0.5 capitalize">{item.severity || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Match</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <Badge variant="outline" className="text-[10px] rounded-sm capitalize">
-                                  {(item.match_strategy || item.match_type || 'none').replace('_', ' ')}
-                                </Badge>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full ${(item.match_confidence || 0) >= 0.8 ? 'bg-emerald-500' : (item.match_confidence || 0) >= 0.5 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                      style={{ width: `${(item.match_confidence || 0) * 100}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs font-mono">{((item.match_confidence || 0) * 100).toFixed(0)}%</span>
-                                </div>
-                              </div>
-                            </div>
                             {(item.interval_value || item.interval_km || item.interval_miles) && (
                               <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Service Interval</p>
@@ -398,7 +387,7 @@ const EstimateDetailPage = () => {
                                     'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
                                   }`}>
                                     <Clock className="h-3 w-3 mr-0.5" />
-                                    {item.due_status.replace(/_/g, ' ')}
+                                    {item.due_status === 'condition_based' ? 'Based on oil life indicator' : item.due_status.replace(/_/g, ' ')}
                                   </Badge>
                                   {item.miles_remaining != null && (
                                     <span className="text-xs font-mono text-muted-foreground">
@@ -410,16 +399,22 @@ const EstimateDetailPage = () => {
                             )}
                             {item.schedule_notes && (
                               <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Schedule Note</p>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Source</p>
                                 <p className="text-sm mt-0.5 text-muted-foreground">{item.schedule_notes}</p>
                               </div>
                             )}
-                            {item.normalized_text && item.normalized_text !== item.raw_text?.toLowerCase() && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Cleaned Text</p>
-                                <p className="text-sm mt-0.5 font-mono text-muted-foreground">{item.normalized_text}</p>
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Match Confidence</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${(item.match_confidence || 0) >= 0.8 ? 'bg-emerald-500' : (item.match_confidence || 0) >= 0.5 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                    style={{ width: `${(item.match_confidence || 0) * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-mono">{((item.match_confidence || 0) * 100).toFixed(0)}%</span>
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -431,7 +426,7 @@ const EstimateDetailPage = () => {
           })}
         </div>
 
-        {/* Convert to Service Record Dialog */}
+        {/* Convert Dialog */}
         <Dialog open={showConvertDialog} onOpenChange={(open) => { if (!converting) setShowConvertDialog(open); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -445,14 +440,10 @@ const EstimateDetailPage = () => {
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Use existing vehicle</label>
                   <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId} disabled={converting}>
-                    <SelectTrigger data-testid="convert-vehicle-select" className="rounded-sm">
-                      <SelectValue placeholder="Select a vehicle" />
-                    </SelectTrigger>
+                    <SelectTrigger data-testid="convert-vehicle-select" className="rounded-sm"><SelectValue placeholder="Select a vehicle" /></SelectTrigger>
                     <SelectContent>
                       {vehicles.filter((v) => v.make === estimate.make && v.model === estimate.model).map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.year} {v.make} {v.model}
-                        </SelectItem>
+                        <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -460,12 +451,7 @@ const EstimateDetailPage = () => {
               )}
 
               {selectedVehicleId && (
-                <Button
-                  className="w-full rounded-sm font-heading font-bold uppercase tracking-wider"
-                  onClick={() => handleConvert(false)}
-                  disabled={converting}
-                  data-testid="convert-existing-btn"
-                >
+                <Button className="w-full rounded-sm font-heading font-bold uppercase tracking-wider" onClick={() => handleConvert(false)} disabled={converting} data-testid="convert-existing-btn">
                   {converting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
                   Convert to Selected Vehicle
                 </Button>
@@ -476,13 +462,7 @@ const EstimateDetailPage = () => {
                 <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">or</span></div>
               </div>
 
-              <Button
-                variant="outline"
-                className="w-full rounded-sm"
-                onClick={() => handleConvert(true)}
-                disabled={converting}
-                data-testid="convert-create-vehicle-btn"
-              >
+              <Button variant="outline" className="w-full rounded-sm" onClick={() => handleConvert(true)} disabled={converting} data-testid="convert-create-vehicle-btn">
                 {converting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                 Add "{estimate.vehicle_info}" to My Garage & Convert
               </Button>

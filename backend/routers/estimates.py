@@ -44,6 +44,34 @@ class EstimateItemUpdate(BaseModel):
     recommendation: Optional[str] = None
 
 
+def _detect_region_from_ocr(ocr_data: dict) -> Optional[str]:
+    """Detect region from OCR output by checking for currency, zip codes, etc."""
+    raw = (ocr_data.get("raw_text_summary", "") + " " + (ocr_data.get("provider") or "")).lower()
+    # Check all line items too
+    for li in ocr_data.get("line_items", []):
+        raw += " " + (li.get("description", "") + " " + li.get("notes", "")).lower()
+
+    # US signals
+    us_states = r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b'
+    us_zip = r'\b\d{5}(-\d{4})?\b'
+    ca_postal = r'\b[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d\b'
+
+    has_usd = 'usd' in raw or '$ usd' in raw
+    has_cad = 'cad' in raw or 'c$' in raw or 'cdn' in raw
+    has_us_zip = bool(re.search(us_zip, raw))
+    has_ca_postal = bool(re.search(ca_postal, raw))
+    has_us_state = bool(re.search(us_states, ocr_data.get("raw_text_summary", "") + " " + (ocr_data.get("provider") or "")))
+
+    us_score = int(has_usd) + int(has_us_zip) + int(has_us_state)
+    ca_score = int(has_cad) + int(has_ca_postal)
+
+    if us_score > ca_score and us_score > 0:
+        return "US"
+    if ca_score > us_score and ca_score > 0:
+        return "CA"
+    return None
+
+
 # --- Region Profiles ---
 
 @router.get("/region-profiles")
@@ -185,6 +213,9 @@ async def create_estimate(
     # Extract via OCR
     ocr_data = await extract_estimate_via_ocr(file_bytes, file.content_type, file.filename)
 
+    # Auto-detect region from OCR data
+    detected_region = _detect_region_from_ocr(ocr_data)
+
     distance_unit = "mi" if region_code == "US" else "km"
     currency_code = "USD" if region_code == "US" else "CAD"
 
@@ -207,6 +238,7 @@ async def create_estimate(
         "file_type": file.content_type,
         "status": "analyzed",
         "region_code": region_code,
+        "detected_region": detected_region,
         "schedule_code": schedule_code,
         "current_mileage": current_mileage,
         "distance_unit": distance_unit,
@@ -333,6 +365,79 @@ async def update_estimate_item(
 
     item = await db.repair_estimate_items.find_one({"id": item_id}, {"_id": 0})
     return item
+
+
+class ReanalyzeRequest(BaseModel):
+    schedule_code: str = "SCHEDULE_1"
+
+
+@router.post("/{estimate_id}/reanalyze")
+async def reanalyze_estimate(
+    estimate_id: str,
+    body: ReanalyzeRequest,
+    current_user: dict = Depends(get_user),
+):
+    """Re-run analysis with different driving conditions (schedule)."""
+    estimate = await db.repair_estimates.find_one(
+        {"id": estimate_id, "user_id": current_user["id"]}, {"_id": 0}
+    )
+    if not estimate:
+        raise HTTPException(404, "Estimate not found")
+
+    items = await db.repair_estimate_items.find(
+        {"estimate_id": estimate_id}, {"_id": 0}
+    ).sort("item_index", 1).to_list(100)
+
+    vehicle = {"make": estimate.get("make", ""), "model": estimate.get("model", ""), "year": estimate.get("year", 0)}
+    region_code = estimate.get("region_code") or "CA"
+    mileage = estimate.get("current_mileage")
+
+    # Parse vehicle_info as fallback for older estimates
+    if not vehicle["make"] and estimate.get("vehicle_info"):
+        parts = estimate["vehicle_info"].split()
+        if len(parts) >= 3:
+            vehicle = {"make": parts[1], "model": parts[2], "year": int(parts[0]) if parts[0].isdigit() else 0}
+
+    updated_items = []
+    for item in items:
+        analysis = await analyze_estimate_item(
+            db,
+            raw_text=item["raw_text"],
+            quoted_price=item.get("quoted_price", 0),
+            vehicle=vehicle,
+            region_code=region_code,
+            schedule_code=body.schedule_code,
+            current_mileage=mileage,
+        )
+        update_fields = {
+            k: analysis[k] for k in [
+                "service_key", "display_name", "description", "matched_synonym",
+                "match_type", "match_strategy", "match_confidence", "category",
+                "severity", "default_recommendation_code", "recommendation_text",
+                "user_explanation", "region_code", "schedule_used", "due_status",
+                "interval_value", "interval_unit", "interval_km", "interval_miles",
+                "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
+                "schedule_notes", "source_reference", "rule_trace", "normalized_text",
+            ] if k in analysis
+        }
+        update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        await db.repair_estimate_items.update_one(
+            {"id": item["id"]}, {"$set": update_fields}
+        )
+        updated_items.append({**item, **update_fields})
+
+    # Update schedule on the estimate itself
+    await db.repair_estimates.update_one(
+        {"id": estimate_id},
+        {"$set": {"schedule_code": body.schedule_code, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    return {
+        "estimate": {**estimate, "schedule_code": body.schedule_code},
+        "items": updated_items,
+        "summary": _build_summary(updated_items),
+    }
 
 
 class ConvertItemsRequest(BaseModel):
@@ -462,6 +567,11 @@ async def debug_match_line(body: DebugMatchRequest, current_user: dict = Depends
         "schedule_code": body.schedule_code,
         "current_mileage": body.current_mileage,
         "distance_unit": "mi" if body.region_code == "US" else "km",
+        "inferred_logic": {
+            "default_schedule_applied": body.schedule_code,
+            "user_selected_schedule": body.schedule_code if body.schedule_code != "SCHEDULE_1" else None,
+            "logic": "region_based",
+        },
         "match": {
             "service_key": match["service_key"],
             "matched_synonym": match["matched_synonym"],

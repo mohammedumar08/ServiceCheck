@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, Car, Loader2, X, Camera, Globe, Gauge } from 'lucide-react';
+import { FileSearch, Upload, Plus, Trash2, ChevronRight, Calendar, Car, Loader2, X, Camera, Globe } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
@@ -15,21 +15,37 @@ import { toast } from 'sonner';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const REGION_META = {
+  US: { label: 'United States', unit: 'miles', placeholder: 'e.g. 42,000', helper: 'We use your vehicle\'s oil life system when applicable' },
+  CA: { label: 'Canada', unit: 'km', placeholder: 'e.g. 65,000', helper: 'Based on mileage and typical Canadian driving conditions' },
+};
+
+const detectDefaultRegion = () => {
+  const stored = localStorage.getItem('servicecheck_region');
+  if (stored && REGION_META[stored]) return stored;
+  const lang = (navigator.language || '').toLowerCase();
+  if (lang.includes('us') || lang === 'en') return 'US';
+  if (lang.includes('ca')) return 'CA';
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz.startsWith('America/') && !tz.includes('Toronto') && !tz.includes('Vancouver') && !tz.includes('Montreal') && !tz.includes('Edmonton') && !tz.includes('Winnipeg')) return 'US';
+  } catch {}
+  return 'CA';
+};
+
 const EstimatesPage = () => {
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Cascading dropdowns
-  const [pickerMode, setPickerMode] = useState(''); // 'garage' or 'manual'
+  const [pickerMode, setPickerMode] = useState('');
   const [garageVehicleId, setGarageVehicleId] = useState('');
   const [selMake, setSelMake] = useState('');
   const [selModel, setSelModel] = useState('');
   const [selYear, setSelYear] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [regionCode, setRegionCode] = useState('CA');
-  const [scheduleCode, setScheduleCode] = useState('SCHEDULE_1');
+  const [regionCode, setRegionCode] = useState(detectDefaultRegion);
   const [currentMileage, setCurrentMileage] = useState('');
   const [supportedVehicles, setSupportedVehicles] = useState([]);
   const [garageVehicles, setGarageVehicles] = useState([]);
@@ -50,14 +66,13 @@ const EstimatesPage = () => {
       setEstimates(estRes.data.estimates || []);
       setSupportedVehicles(supRes.data.supported_vehicles || []);
       setGarageVehicles(garRes.data || []);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }
   };
 
-  // Derived lists for cascading dropdowns
   const supportedSet = new Set(supportedVehicles.map((sv) => `${sv.make}|${sv.model}|${sv.year}`));
   const garageSupported = garageVehicles.filter((v) => supportedSet.has(`${v.make}|${v.model}|${v.year}`));
   const makes = [...new Set(supportedVehicles.map((sv) => sv.make))].sort();
@@ -69,9 +84,7 @@ const EstimatesPage = () => {
       const v = garageVehicles.find((g) => g.id === garageVehicleId);
       return v ? { make: v.make, model: v.model, year: v.year } : null;
     }
-    if (selMake && selModel && selYear) {
-      return { make: selMake, model: selModel, year: parseInt(selYear) };
-    }
+    if (selMake && selModel && selYear) return { make: selMake, model: selModel, year: parseInt(selYear) };
     return null;
   };
 
@@ -80,6 +93,12 @@ const EstimatesPage = () => {
     if (!file) return;
     setSelectedFile(file);
     setPreviewUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
+  };
+
+  const handleRegionChange = (v) => {
+    setRegionCode(v);
+    setCurrentMileage('');
+    localStorage.setItem('servicecheck_region', v);
   };
 
   const handleUpload = async () => {
@@ -96,7 +115,7 @@ const EstimatesPage = () => {
       formData.append('model', selection.model);
       formData.append('year', selection.year);
       formData.append('region_code', regionCode);
-      formData.append('schedule_code', scheduleCode);
+      formData.append('schedule_code', 'SCHEDULE_1');
       if (currentMileage) formData.append('current_mileage', parseInt(currentMileage));
       const res = await axios.post(`${API_URL}/estimates`, formData, {
         ...getAuthHeader(),
@@ -122,8 +141,6 @@ const EstimatesPage = () => {
     setSelMake('');
     setSelModel('');
     setSelYear('');
-    setRegionCode('CA');
-    setScheduleCode('SCHEDULE_1');
     setCurrentMileage('');
   };
 
@@ -133,12 +150,13 @@ const EstimatesPage = () => {
       await axios.delete(`${API_URL}/estimates/${estimateId}`, getAuthHeader());
       setEstimates((prev) => prev.filter((est) => est.id !== estimateId));
       toast.success('Estimate deleted');
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete estimate');
     }
   };
 
   const isReady = !!getSelection();
+  const rm = REGION_META[regionCode] || REGION_META.CA;
 
   if (loading) {
     return (
@@ -155,8 +173,8 @@ const EstimatesPage = () => {
       <div data-testid="estimates-page" className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">Repair Estimates</h1>
-            <p className="text-muted-foreground mt-1">Upload and analyze mechanic quotes</p>
+            <h1 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">Estimate Analysis</h1>
+            <p className="text-muted-foreground mt-1">Upload a mechanic quote and get instant recommendations</p>
           </div>
           <Button
             data-testid="upload-estimate-btn"
@@ -164,7 +182,7 @@ const EstimatesPage = () => {
             className="rounded-sm font-heading font-bold uppercase tracking-wider"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Upload Estimate
+            Analyze Estimate
           </Button>
         </div>
 
@@ -241,108 +259,18 @@ const EstimatesPage = () => {
           </div>
         )}
 
-        {/* Upload Dialog */}
+        {/* Upload Dialog — Simplified */}
         <Dialog open={dialogOpen} onOpenChange={(open) => { if (!uploading) { setDialogOpen(open); if (!open) resetDialog(); } }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="font-heading font-bold">Upload Repair Estimate</DialogTitle>
-              <DialogDescription>Select the vehicle and upload a mechanic's quote for analysis.</DialogDescription>
+              <DialogTitle className="font-heading font-bold">Estimate Analysis</DialogTitle>
+              <DialogDescription>Upload a mechanic's quote to see what's needed, what's optional, and what to skip.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              {/* Source toggle: Garage or Manual */}
-              {garageSupported.length > 0 && (
-                <div className="flex gap-2">
-                  <Button
-                    variant={pickerMode === 'garage' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1 rounded-sm text-xs"
-                    onClick={() => { setPickerMode('garage'); setSelMake(''); setSelModel(''); setSelYear(''); }}
-                    disabled={uploading}
-                    data-testid="picker-garage-btn"
-                  >
-                    <Car className="mr-1.5 h-3.5 w-3.5" /> From My Garage
-                  </Button>
-                  <Button
-                    variant={pickerMode === 'manual' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1 rounded-sm text-xs"
-                    onClick={() => { setPickerMode('manual'); setGarageVehicleId(''); }}
-                    disabled={uploading}
-                    data-testid="picker-manual-btn"
-                  >
-                    Select Manually
-                  </Button>
-                </div>
-              )}
-
-              {/* Garage picker */}
-              {(pickerMode === 'garage' && garageSupported.length > 0) && (
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Vehicle</label>
-                  <Select value={garageVehicleId} onValueChange={setGarageVehicleId} disabled={uploading}>
-                    <SelectTrigger data-testid="estimate-garage-select" className="rounded-sm">
-                      <SelectValue placeholder="Select from garage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {garageSupported.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Cascading Make -> Model -> Year */}
-              {(pickerMode === 'manual' || (pickerMode === '' && garageSupported.length === 0)) && (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Make</label>
-                      <Select value={selMake} onValueChange={(v) => { setSelMake(v); setSelModel(''); setSelYear(''); }} disabled={uploading}>
-                        <SelectTrigger data-testid="estimate-make-select" className="rounded-sm">
-                          <SelectValue placeholder="Make" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {makes.map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Model</label>
-                      <Select value={selModel} onValueChange={(v) => { setSelModel(v); setSelYear(''); }} disabled={uploading || !selMake}>
-                        <SelectTrigger data-testid="estimate-model-select" className="rounded-sm">
-                          <SelectValue placeholder="Model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {models.map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Year</label>
-                      <Select value={selYear} onValueChange={setSelYear} disabled={uploading || !selModel}>
-                        <SelectTrigger data-testid="estimate-year-select" className="rounded-sm">
-                          <SelectValue placeholder="Year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {years.map((y) => (
-                            <SelectItem key={y} value={y}>{y}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Region Selector */}
+              {/* Region */}
               <div>
-                <label className="text-sm font-medium mb-1.5 block">Region</label>
-                <Select value={regionCode} onValueChange={(v) => { setRegionCode(v); if (v !== 'US') { setScheduleCode('SCHEDULE_1'); setCurrentMileage(''); } }} disabled={uploading}>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Region</label>
+                <Select value={regionCode} onValueChange={handleRegionChange} disabled={uploading}>
                   <SelectTrigger data-testid="estimate-region-select" className="rounded-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -353,45 +281,87 @@ const EstimatesPage = () => {
                 </Select>
               </div>
 
-              {/* US-specific: Mileage + Schedule */}
-              {regionCode === 'US' && (
-                <div className="space-y-3 rounded-sm border border-border/50 p-3 bg-muted/30">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Gauge className="h-3.5 w-3.5" />
-                    <span>US Schedule Options</span>
-                  </div>
+              {/* Vehicle */}
+              {garageSupported.length > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    variant={pickerMode === 'garage' ? 'default' : 'outline'}
+                    size="sm" className="flex-1 rounded-sm text-xs"
+                    onClick={() => { setPickerMode('garage'); setSelMake(''); setSelModel(''); setSelYear(''); }}
+                    disabled={uploading} data-testid="picker-garage-btn"
+                  >
+                    <Car className="mr-1.5 h-3.5 w-3.5" /> From My Garage
+                  </Button>
+                  <Button
+                    variant={pickerMode === 'manual' ? 'default' : 'outline'}
+                    size="sm" className="flex-1 rounded-sm text-xs"
+                    onClick={() => { setPickerMode('manual'); setGarageVehicleId(''); }}
+                    disabled={uploading} data-testid="picker-manual-btn"
+                  >
+                    Select Manually
+                  </Button>
+                </div>
+              )}
+
+              {(pickerMode === 'garage' && garageSupported.length > 0) && (
+                <Select value={garageVehicleId} onValueChange={setGarageVehicleId} disabled={uploading}>
+                  <SelectTrigger data-testid="estimate-garage-select" className="rounded-sm">
+                    <SelectValue placeholder="Select from garage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {garageSupported.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {(pickerMode === 'manual' || (pickerMode === '' && garageSupported.length === 0)) && (
+                <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Current Mileage (optional)</label>
-                    <Input
-                      data-testid="estimate-mileage-input"
-                      type="number"
-                      placeholder="e.g. 42000"
-                      value={currentMileage}
-                      onChange={(e) => setCurrentMileage(e.target.value)}
-                      disabled={uploading}
-                      className="rounded-sm"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-1">Enter mileage to see due/not-due status per service</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Driving Schedule</label>
-                    <Select value={scheduleCode} onValueChange={setScheduleCode} disabled={uploading}>
-                      <SelectTrigger data-testid="estimate-schedule-select" className="rounded-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="SCHEDULE_1">Schedule 1 - Normal Driving</SelectItem>
-                        <SelectItem value="SCHEDULE_2">Schedule 2 - Severe Conditions</SelectItem>
-                      </SelectContent>
+                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Make</label>
+                    <Select value={selMake} onValueChange={(v) => { setSelMake(v); setSelModel(''); setSelYear(''); }} disabled={uploading}>
+                      <SelectTrigger data-testid="estimate-make-select" className="rounded-sm"><SelectValue placeholder="Make" /></SelectTrigger>
+                      <SelectContent>{makes.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                     </Select>
-                    <p className="text-[10px] text-muted-foreground mt-1">Use Schedule 2 for dusty, short-trip, or extreme driving</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Model</label>
+                    <Select value={selModel} onValueChange={(v) => { setSelModel(v); setSelYear(''); }} disabled={uploading || !selMake}>
+                      <SelectTrigger data-testid="estimate-model-select" className="rounded-sm"><SelectValue placeholder="Model" /></SelectTrigger>
+                      <SelectContent>{models.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block text-muted-foreground">Year</label>
+                    <Select value={selYear} onValueChange={setSelYear} disabled={uploading || !selModel}>
+                      <SelectTrigger data-testid="estimate-year-select" className="rounded-sm"><SelectValue placeholder="Year" /></SelectTrigger>
+                      <SelectContent>{years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
+                    </Select>
                   </div>
                 </div>
               )}
 
+              {/* Mileage — always visible, label adapts to region */}
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">
+                  {regionCode === 'US' ? 'Current Mileage' : 'Current Odometer'} <span className="opacity-60">(optional)</span>
+                </label>
+                <Input
+                  data-testid="estimate-mileage-input"
+                  type="number"
+                  placeholder={rm.placeholder}
+                  value={currentMileage}
+                  onChange={(e) => setCurrentMileage(e.target.value)}
+                  disabled={uploading}
+                  className="rounded-sm"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">{rm.helper}</p>
+              </div>
+
               {/* File Picker */}
               <div>
-                <label className="text-sm font-medium mb-1.5 block">Estimate Document</label>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Estimate Document</label>
                 {selectedFile ? (
                   <div className="border border-border rounded-sm p-3 space-y-2">
                     {previewUrl && <img src={previewUrl} alt="Preview" className="w-full max-h-40 object-contain rounded-sm bg-muted" />}
@@ -414,7 +384,7 @@ const EstimatesPage = () => {
                 )}
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleFileSelect} />
                 <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
-                <p className="text-xs text-muted-foreground mt-1.5">JPEG, PNG, WebP, or PDF (max 20MB)</p>
+                <p className="text-[10px] text-muted-foreground mt-1">JPEG, PNG, WebP, or PDF (max 20MB)</p>
               </div>
 
               <Button
