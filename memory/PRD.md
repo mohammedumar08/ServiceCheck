@@ -44,20 +44,38 @@ Build a web-based app for tracking car service records with AI-powered OCR for r
 - **Detected region banner**: Shows suggestion if OCR-detected region differs from selected region
 - **Debug mode**: Shows inferred_logic with default_schedule_applied and region_based logic
 
+### Public/Guest Estimate Access (Feb 2026)
+- **Public estimate checker page**: `/estimate-checker` accessible without login
+- **Public API endpoints**: All under `/api/estimates/public/*` — no auth required
+  - `POST /api/estimates/public/analyze` — Upload & analyze as guest (returns `guest_token`)
+  - `GET /api/estimates/public/results/{id}?guest_token=xxx` — View guest results
+  - `POST /api/estimates/public/results/{id}/reanalyze?guest_token=xxx` — Re-analyze with different driving conditions
+  - `POST /api/estimates/public/claim/{id}` — Auth-required, links guest estimate to user
+  - `GET /api/estimates/public/region-profiles` — Region profiles without auth
+  - `GET /api/estimates/public/supported-vehicles` — Supported vehicles without auth
+- **Guest-to-user flow**: Guest creates estimate → views results → clicks "Save to Garage" → redirected to login with `returnTo` param → after login, estimate auto-claimed and user redirected to authenticated detail page
+- **Login/Register returnTo**: Both pages handle `returnTo` query parameter for post-auth redirect
+- **Landing page CTA**: "Check an Estimate" and "Get Started Free" buttons now navigate to `/estimate-checker` (always, regardless of login state)
+
 ## Key API Endpoints
 - `GET /api/estimates/region-profiles` — Returns CA/US profiles
 - `GET /api/estimates/supported-vehicles` — Returns vehicles with available regions
 - `POST /api/estimates` — Upload + analyze (accepts region_code, current_mileage; schedule defaults to SCHEDULE_1)
 - `POST /api/estimates/{id}/reanalyze` — Re-run analysis with different driving conditions
 - `POST /api/estimates/debug/match` — Enhanced debug with verdict, rule trace, inferred logic
+- `POST /api/estimates/public/analyze` — Public guest analyze (no auth, returns guest_token)
+- `GET /api/estimates/public/results/{id}` — Public guest results (requires guest_token query param)
+- `POST /api/estimates/public/claim/{id}` — Claim guest estimate (requires auth)
 - CRUD: vehicles, service-records, reminders, estimates
 
 ## Test Files
 - `/app/backend/tests/test_estimate_matching.py` — 36 pytest cases (all passing)
 - `/app/backend/tests/test_ux_simplification.py` — UX simplification tests
-- `/app/test_reports/iteration_5.json` — Latest: 100% pass rate (33/33 tests)
+- `/app/backend/tests/test_public_estimate_flow.py` — Public/guest flow tests
+- `/app/test_reports/iteration_6.json` — Latest: 100% pass rate (backend 23/23, all frontend flows)
 
 ## Backlog
+- P1: "Operating Conditions" checklist UI on results page (check specific severe conditions)
 - P1: Add more US makes/models (Toyota, Honda, etc.)
 - P2: Modularize `server.py` — move auth & service-record routes into `/routers`
 - P2: Remove unused `file-saver` dependency
