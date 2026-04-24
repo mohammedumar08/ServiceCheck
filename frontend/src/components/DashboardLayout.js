@@ -63,7 +63,7 @@ const DashboardLayout = ({ children }) => {
         </Button>
         <div className="flex items-center gap-2 mx-auto">
           <Wrench className="h-5 w-5 text-primary" />
-          <span className="font-heading font-bold text-lg">ServiceTrack</span>
+          <span className="font-heading font-bold text-lg">ServiceCheck</span>
         </div>
         <Button
           variant="ghost"
@@ -96,7 +96,7 @@ const DashboardLayout = ({ children }) => {
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <div className="flex items-center gap-2">
                   <Wrench className="h-6 w-6 text-primary" />
-                  <span className="font-heading font-bold text-xl">ServiceTrack</span>
+                  <span className="font-heading font-bold text-xl">ServiceCheck</span>
                 </div>
                 <Button
                   variant="ghost"
@@ -163,7 +163,7 @@ const DashboardLayout = ({ children }) => {
       <aside className="hidden lg:flex lg:flex-col lg:fixed lg:left-0 lg:top-0 lg:bottom-0 lg:w-64 bg-card border-r border-border">
         <div className="flex items-center gap-2 p-6 border-b border-border">
           <Wrench className="h-6 w-6 text-primary" />
-          <span className="font-heading font-bold text-xl tracking-tight">ServiceTrack</span>
+          <span className="font-heading font-bold text-xl tracking-tight">ServiceCheck</span>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => (
