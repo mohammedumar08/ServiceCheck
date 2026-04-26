@@ -119,27 +119,29 @@ const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpande
                     <p className="text-sm text-muted-foreground">Sign in to check your service history.</p>
                   ) : vehicleStatus ? (
                     <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${
-                          vehicleStatus.status === 'overdue' ? 'bg-red-500/10 border-red-500/30' :
-                          vehicleStatus.status === 'due_soon' ? 'bg-amber-500/10 border-amber-500/30' :
-                          vehicleStatus.status === 'not_due' ? 'bg-emerald-500/10 border-emerald-500/30' :
-                          'bg-zinc-500/10 border-zinc-500/30'
-                        }`}>
-                          <Clock className="h-3.5 w-3.5 mr-1" />
-                          <span className={
-                            vehicleStatus.status === 'overdue' ? 'text-red-400' :
-                            vehicleStatus.status === 'due_soon' ? 'text-amber-400' :
-                            vehicleStatus.status === 'not_due' ? 'text-emerald-400' :
-                            'text-zinc-400'
-                          }>
-                            {vehicleStatus.status === 'overdue' ? 'Overdue' :
-                             vehicleStatus.status === 'due_soon' ? 'Due Soon' :
-                             vehicleStatus.status === 'not_due' ? 'Not Due' : 'Unknown'}
-                          </span>
-                        </Badge>
-                      </div>
-                      <div className="mt-1.5 space-y-0.5">
+                      {vehicleStatus.status !== 'unknown' && (
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${
+                            vehicleStatus.status === 'overdue' ? 'bg-red-500/10 border-red-500/30' :
+                            vehicleStatus.status === 'due_soon' ? 'bg-amber-500/10 border-amber-500/30' :
+                            vehicleStatus.status === 'not_due' ? 'bg-emerald-500/10 border-emerald-500/30' :
+                            'bg-zinc-500/10 border-zinc-500/30'
+                          }`}>
+                            <Clock className="h-3.5 w-3.5 mr-1" />
+                            <span className={
+                              vehicleStatus.status === 'overdue' ? 'text-red-400' :
+                              vehicleStatus.status === 'due_soon' ? 'text-amber-400' :
+                              vehicleStatus.status === 'not_due' ? 'text-emerald-400' :
+                              'text-zinc-400'
+                            }>
+                              {vehicleStatus.status === 'overdue' ? 'Overdue' :
+                               vehicleStatus.status === 'due_soon' ? 'Due Soon' :
+                               vehicleStatus.status === 'not_due' ? 'Not Due' : ''}
+                            </span>
+                          </Badge>
+                        </div>
+                      )}
+                      <div className="space-y-0.5">
                         <p className="text-xs text-muted-foreground">
                           Last serviced: <span className="text-foreground font-medium">
                             {vehicleStatus.last_service_date ? new Date(vehicleStatus.last_service_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}

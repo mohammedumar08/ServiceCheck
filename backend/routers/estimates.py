@@ -621,16 +621,27 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
         distance_since = None
         status = "unknown"
 
-        # Calculate time since last service
+        # Calculate time since last service (handle multiple date formats)
         if last_date_str:
+            last_dt = None
             try:
                 last_dt = datetime.fromisoformat(last_date_str.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
-                delta = now - last_dt
-                days_since = delta.days
-                months_since = days_since // 30
             except Exception:
                 pass
+            if not last_dt:
+                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d", "%b %d, %Y", "%B %d, %Y"):
+                    try:
+                        last_dt = datetime.strptime(last_date_str, fmt).replace(tzinfo=timezone.utc)
+                        break
+                    except Exception:
+                        continue
+            if last_dt:
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                delta = now - last_dt
+                days_since = max(delta.days, 0)
+                months_since = days_since // 30
 
         # Calculate distance since last service
         if last_odometer and current_mileage and current_mileage > last_odometer:
