@@ -647,15 +647,15 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
                 delta = now - last_dt
                 days_since = max(delta.days, 0)
                 months_since = days_since // 30
-                # Time-based status using manufacturer interval (or skip if unknown)
-                if interval_months:
-                    threshold_days = interval_months * 30
-                    if days_since >= threshold_days:
-                        time_status = "overdue"
-                    elif days_since >= threshold_days * 0.8:
-                        time_status = "due_soon"
-                    else:
-                        time_status = "not_due"
+                # Time-based status using manufacturer interval (fallback: 12 months)
+                time_interval = interval_months or 12
+                threshold_days = time_interval * 30
+                if days_since >= threshold_days:
+                    time_status = "overdue"
+                elif days_since >= threshold_days * 0.8:
+                    time_status = "due_soon"
+                else:
+                    time_status = "not_due"
 
         # Calculate distance since last service
         if last_odometer and current_mileage and current_mileage > last_odometer:
