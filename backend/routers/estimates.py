@@ -590,6 +590,9 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
     ).to_list(100)
 
     current_mileage = estimate.get("current_mileage")
+    # Fallback: use vehicle's current odometer from garage if estimate doesn't have mileage
+    if not current_mileage and vehicle.get("current_odometer"):
+        current_mileage = vehicle["current_odometer"]
     result = {}
 
     for item in est_items:
@@ -619,7 +622,8 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
         days_since = None
         months_since = None
         distance_since = None
-        status = "unknown"
+        time_status = None
+        distance_status = None
 
         # Calculate time since last service (handle multiple date formats)
         if last_date_str:
@@ -642,26 +646,32 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
                 delta = now - last_dt
                 days_since = max(delta.days, 0)
                 months_since = days_since // 30
+                # Time-based status (default 12-month interval)
+                if days_since >= 365:
+                    time_status = "overdue"
+                elif days_since >= 300:
+                    time_status = "due_soon"
+                else:
+                    time_status = "not_due"
 
         # Calculate distance since last service
         if last_odometer and current_mileage and current_mileage > last_odometer:
             distance_since = current_mileage - last_odometer
+            if interval_value:
+                if distance_since >= interval_value:
+                    distance_status = "overdue"
+                elif distance_since >= interval_value * 0.8:
+                    distance_status = "due_soon"
+                else:
+                    distance_status = "not_due"
 
-        # Determine due status
-        if interval_value and distance_since is not None:
-            if distance_since >= interval_value:
-                status = "overdue"
-            elif distance_since >= interval_value * 0.8:
-                status = "due_soon"
-            else:
-                status = "not_due"
-        elif days_since is not None:
-            if days_since >= 365:
-                status = "overdue"
-            elif days_since >= 300:
-                status = "due_soon"
-            else:
-                status = "not_due"
+        # Final status: worst of time and distance (overdue > due_soon > not_due)
+        priority = {"overdue": 3, "due_soon": 2, "not_due": 1}
+        candidates = [s for s in [time_status, distance_status] if s]
+        if candidates:
+            status = max(candidates, key=lambda s: priority.get(s, 0))
+        else:
+            status = "unknown"
 
         result[item["id"]] = {
             "last_service_date": last_date_str,
