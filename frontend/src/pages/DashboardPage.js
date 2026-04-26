@@ -248,12 +248,12 @@ const DashboardPage = () => {
                     const isCurrentYear = yr.year === String(new Date().getFullYear());
                     return (
                       <div key={yr.year} className="flex-1 flex flex-col items-center gap-1.5 group">
-                        <span className="text-xs font-mono font-bold text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs font-mono font-bold text-foreground">
                           ${yr.amount.toLocaleString()}
                         </span>
                         <motion.div
                           initial={{ height: 0 }}
-                          animate={{ height: `${Math.max(heightPct, 4)}%` }}
+                          animate={{ height: `${Math.max(heightPct, 8)}%` }}
                           transition={{ delay: 0.6 + i * 0.15, duration: 0.6, ease: "easeOut" }}
                           className={`w-full max-w-16 rounded-t-sm ${isCurrentYear ? 'bg-primary' : 'bg-primary/30'}`}
                         />
