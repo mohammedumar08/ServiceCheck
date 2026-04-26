@@ -2,37 +2,21 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, FileSearch, CheckCircle2, AlertTriangle, HelpCircle, XCircle,
-  DollarSign, Wrench, ChevronDown, ChevronUp, ArrowRightLeft, Loader2,
-  ShieldCheck, ShieldAlert, ShieldQuestion, Car, PlusCircle, Globe, Clock, Gauge, RefreshCw, AlertCircle
+  ArrowLeft, ArrowRightLeft, Loader2,
+  Car, PlusCircle, Globe, Gauge, AlertCircle
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Checkbox } from '../components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import DashboardLayout from '../components/DashboardLayout';
+import EstimateItemCard from '../components/EstimateItemCard';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const RECOMMENDATION_CONFIG = {
-  recommended_now: { label: 'Recommended', icon: ShieldCheck, color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dotColor: 'bg-emerald-500' },
-  maybe_needed: { label: 'Maybe Needed', icon: ShieldQuestion, color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', dotColor: 'bg-amber-500' },
-  likely_optional: { label: 'Likely Optional', icon: HelpCircle, color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', dotColor: 'bg-blue-500' },
-  cannot_determine: { label: 'Info', icon: HelpCircle, color: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30', dotColor: 'bg-zinc-500' },
-};
-
-const CATEGORY_CONFIG = {
-  required: { label: 'Required', color: 'text-emerald-400' },
-  conditional: { label: 'Conditional', color: 'text-amber-400' },
-  not_required: { label: 'Not Required', color: 'text-blue-400' },
-  informational: { label: 'Informational', color: 'text-zinc-400' },
-  unknown: { label: 'Unknown', color: 'text-zinc-400' },
-};
 
 const EstimateDetailPage = () => {
   const { id } = useParams();
@@ -150,8 +134,6 @@ const EstimateDetailPage = () => {
   const { estimate, items, summary } = data;
   const distUnit = estimate.distance_unit || (estimate.region_code === 'US' ? 'mi' : 'km');
   const isUS = estimate.region_code === 'US';
-  const recConfig = (rec) => RECOMMENDATION_CONFIG[rec] || RECOMMENDATION_CONFIG.cannot_determine;
-  const catConfig = (cat) => CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.unknown;
 
   return (
     <DashboardLayout>
@@ -290,140 +272,18 @@ const EstimateDetailPage = () => {
         {/* Items List */}
         <div className="space-y-2">
           <h2 className="font-heading font-bold text-lg">Line Items</h2>
-          {items.map((item, idx) => {
-            const rec = recConfig(item.default_recommendation_code);
-            const cat = catConfig(item.category);
-            const isExpanded = expandedItem === item.id;
-            const RecIcon = rec.icon;
-
-            return (
-              <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.03 }}>
-                <Card className={`rounded-sm border-border transition-colors ${item.converted_to_service ? 'opacity-60' : ''}`} data-testid={`estimate-item-${item.id}`}>
-                  <CardContent className="p-0">
-                    <div className="flex items-center gap-3 p-4 cursor-pointer" onClick={() => setExpandedItem(isExpanded ? null : item.id)}>
-                      {!item.converted_to_service && (
-                        <Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItem(item.id)} onClick={(e) => e.stopPropagation()} data-testid={`checkbox-item-${item.id}`} className="shrink-0" />
-                      )}
-                      {item.converted_to_service && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />}
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{item.display_name || item.raw_text}</span>
-                          <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${rec.color}`}>
-                            <RecIcon className="h-3 w-3 mr-0.5" />{rec.label}
-                          </Badge>
-                          <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${cat.color}`}>{cat.label}</Badge>
-                          {item.due_status && item.due_status !== 'unknown' && item.due_status !== 'schedule_known' && (
-                            <Badge variant="outline" className={`text-[10px] rounded-sm px-1.5 py-0 ${
-                              item.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
-                              item.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
-                              item.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
-                              item.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
-                              'bg-zinc-500/15 text-zinc-400'
-                            }`}>
-                              <Clock className="h-3 w-3 mr-0.5" />
-                              {item.due_status === 'condition_based' ? 'oil life' : item.due_status.replace(/_/g, ' ')}
-                            </Badge>
-                          )}
-                        </div>
-                        {item.raw_text !== item.display_name && item.display_name && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">Original: {item.raw_text}</p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="font-mono font-bold">${(item.quoted_price || 0).toFixed(2)}</span>
-                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-0 border-t border-border/50 mt-0">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
-                          <div className="space-y-2">
-                            {item.recommendation_text && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Recommendation</p>
-                                <p className="text-sm font-medium mt-0.5">{item.recommendation_text}</p>
-                              </div>
-                            )}
-                            {item.user_explanation && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Details</p>
-                                <p className="text-sm mt-0.5 text-muted-foreground">{item.user_explanation}</p>
-                              </div>
-                            )}
-                            {item.description && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Description</p>
-                                <p className="text-sm mt-0.5 text-muted-foreground">{item.description}</p>
-                              </div>
-                            )}
-                            {item.notes && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Notes</p>
-                                <p className="text-sm mt-0.5">{item.notes}</p>
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            {(item.interval_value || item.interval_km || item.interval_miles) && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Service Interval</p>
-                                <p className="text-sm font-mono mt-0.5">
-                                  {(item.interval_value || item.interval_km || item.interval_miles || 0).toLocaleString()} {item.interval_unit || distUnit}
-                                </p>
-                              </div>
-                            )}
-                            {item.due_status && item.due_status !== 'unknown' && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Due Status</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <Badge variant="outline" className={`text-[10px] rounded-sm ${
-                                    item.due_status === 'due_now' ? 'bg-red-500/15 text-red-400 border-red-500/30' :
-                                    item.due_status === 'due_soon' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
-                                    item.due_status === 'not_due' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
-                                    item.due_status === 'condition_based' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
-                                    'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
-                                  }`}>
-                                    <Clock className="h-3 w-3 mr-0.5" />
-                                    {item.due_status === 'condition_based' ? 'Based on oil life indicator' : item.due_status.replace(/_/g, ' ')}
-                                  </Badge>
-                                  {item.miles_remaining != null && (
-                                    <span className="text-xs font-mono text-muted-foreground">
-                                      {item.miles_remaining.toLocaleString()} {item.interval_unit || distUnit} remaining
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {item.schedule_notes && (
-                              <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wider">Source</p>
-                                <p className="text-sm mt-0.5 text-muted-foreground">{item.schedule_notes}</p>
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Match Confidence</p>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${(item.match_confidence || 0) >= 0.8 ? 'bg-emerald-500' : (item.match_confidence || 0) >= 0.5 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                    style={{ width: `${(item.match_confidence || 0) * 100}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-mono">{((item.match_confidence || 0) * 100).toFixed(0)}%</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
+          {items.map((item, idx) => (
+            <EstimateItemCard
+              key={item.id}
+              item={item}
+              idx={idx}
+              distUnit={distUnit}
+              isSelected={selectedItems.has(item.id)}
+              onToggle={toggleItem}
+              isExpanded={expandedItem === item.id}
+              onExpand={setExpandedItem}
+            />
+          ))}
         </div>
 
         {/* Convert Dialog */}
