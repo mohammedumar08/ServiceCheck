@@ -300,6 +300,8 @@ const PublicEstimateResultPage = () => {
               onToggle={toggleItem}
               isExpanded={expandedItem === item.id}
               onExpand={setExpandedItem}
+              vehicleStatus={null}
+              isGuest={!user}
             />
           ))}
         </div>

@@ -557,6 +557,117 @@ async def update_estimate_item(
     return item
 
 
+
+@router.get("/{estimate_id}/vehicle-status")
+async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_user)):
+    """Cross-reference estimate items with user's service history for matching vehicle."""
+    estimate = await db.repair_estimates.find_one({"id": estimate_id}, {"_id": 0})
+    if not estimate:
+        raise HTTPException(404, "Estimate not found")
+
+    # Find user's vehicle matching estimate's make/model/year (case-insensitive)
+    vehicle = await db.vehicles.find_one({
+        "user_id": current_user["id"],
+        "make": {"$regex": f"^{re.escape(estimate.get('make', ''))}$", "$options": "i"},
+        "model": {"$regex": f"^{re.escape(estimate.get('model', ''))}$", "$options": "i"},
+        "year": estimate.get("year"),
+    }, {"_id": 0})
+
+    if not vehicle:
+        return {"vehicle_found": False, "items": {}}
+
+    # Get all service records for this vehicle, sorted newest first
+    records = await db.service_records.find(
+        {"vehicle_id": vehicle["id"]}, {"_id": 0}
+    ).sort("date", -1).to_list(1000)
+
+    if not records:
+        return {"vehicle_found": True, "vehicle_id": vehicle["id"], "has_history": False, "items": {}}
+
+    # Get estimate items
+    est_items = await db.repair_estimate_items.find(
+        {"estimate_id": estimate_id}, {"_id": 0}
+    ).to_list(100)
+
+    current_mileage = estimate.get("current_mileage")
+    result = {}
+
+    for item in est_items:
+        item_name = (item.get("display_name") or item.get("raw_text") or "").lower().strip()
+        service_key = (item.get("service_key") or "").replace("_", " ").lower()
+
+        # Find best matching service record
+        best = None
+        for rec in records:
+            rec_type = (rec.get("service_type") or "").lower().strip()
+            if not rec_type:
+                continue
+            # Match by name containment or service_key
+            if (item_name and (item_name in rec_type or rec_type in item_name)) or \
+               (service_key and (service_key in rec_type or rec_type in service_key)):
+                best = rec
+                break  # sorted desc by date, first match = most recent
+
+        if not best:
+            continue
+
+        last_date_str = best.get("date")
+        last_odometer = best.get("odometer")
+        interval_value = item.get("interval_value") or item.get("interval_km") or item.get("interval_miles")
+        interval_unit = item.get("interval_unit", "km")
+
+        days_since = None
+        months_since = None
+        distance_since = None
+        status = "unknown"
+
+        # Calculate time since last service
+        if last_date_str:
+            try:
+                last_dt = datetime.fromisoformat(last_date_str.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                delta = now - last_dt
+                days_since = delta.days
+                months_since = days_since // 30
+            except Exception:
+                pass
+
+        # Calculate distance since last service
+        if last_odometer and current_mileage and current_mileage > last_odometer:
+            distance_since = current_mileage - last_odometer
+
+        # Determine due status
+        if interval_value and distance_since is not None:
+            if distance_since >= interval_value:
+                status = "overdue"
+            elif distance_since >= interval_value * 0.8:
+                status = "due_soon"
+            else:
+                status = "not_due"
+        elif days_since is not None:
+            if days_since >= 365:
+                status = "overdue"
+            elif days_since >= 300:
+                status = "due_soon"
+            else:
+                status = "not_due"
+
+        result[item["id"]] = {
+            "last_service_date": last_date_str,
+            "last_service_odometer": last_odometer,
+            "last_service_type": best.get("service_type"),
+            "days_since": days_since,
+            "months_since": months_since,
+            "distance_since": distance_since,
+            "status": status,
+            "interval_value": interval_value,
+            "interval_unit": interval_unit,
+        }
+
+    return {"vehicle_found": True, "vehicle_id": vehicle["id"], "has_history": True, "items": result}
+
+
+
 @router.post("/{estimate_id}/reanalyze")
 async def reanalyze_estimate(
     estimate_id: str,

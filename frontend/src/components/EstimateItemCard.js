@@ -28,7 +28,7 @@ const getConfidenceLevel = (confidence) => {
   return { label: 'Low Confidence', color: 'text-red-400', dot: 'bg-red-500' };
 };
 
-const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpanded, onExpand }) => {
+const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpanded, onExpand, vehicleStatus, isGuest }) => {
   const status = STATUS_CONFIG[item.default_recommendation_code] || STATUS_CONFIG.cannot_determine;
   const StatusIcon = status.icon;
   const confidence = item.match_confidence || 0;
@@ -115,7 +115,50 @@ const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpande
                 {/* Your Vehicle Status */}
                 <div>
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1.5">Your Vehicle Status</p>
-                  {hasDueStatus && dueConfig ? (
+                  {isGuest ? (
+                    <p className="text-sm text-muted-foreground">Sign in to check your service history.</p>
+                  ) : vehicleStatus ? (
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${
+                          vehicleStatus.status === 'overdue' ? 'bg-red-500/10 border-red-500/30' :
+                          vehicleStatus.status === 'due_soon' ? 'bg-amber-500/10 border-amber-500/30' :
+                          vehicleStatus.status === 'not_due' ? 'bg-emerald-500/10 border-emerald-500/30' :
+                          'bg-zinc-500/10 border-zinc-500/30'
+                        }`}>
+                          <Clock className="h-3.5 w-3.5 mr-1" />
+                          <span className={
+                            vehicleStatus.status === 'overdue' ? 'text-red-400' :
+                            vehicleStatus.status === 'due_soon' ? 'text-amber-400' :
+                            vehicleStatus.status === 'not_due' ? 'text-emerald-400' :
+                            'text-zinc-400'
+                          }>
+                            {vehicleStatus.status === 'overdue' ? 'Overdue' :
+                             vehicleStatus.status === 'due_soon' ? 'Due Soon' :
+                             vehicleStatus.status === 'not_due' ? 'Not Due' : 'Unknown'}
+                          </span>
+                        </Badge>
+                      </div>
+                      <div className="mt-1.5 space-y-0.5">
+                        <p className="text-xs text-muted-foreground">
+                          Last serviced: <span className="text-foreground font-medium">
+                            {vehicleStatus.last_service_date ? new Date(vehicleStatus.last_service_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}
+                          </span>
+                          {vehicleStatus.last_service_odometer ? (
+                            <span> at <span className="font-mono font-medium text-foreground">{vehicleStatus.last_service_odometer.toLocaleString()} {distUnit}</span></span>
+                          ) : null}
+                        </p>
+                        {vehicleStatus.months_since != null && (
+                          <p className="text-xs text-muted-foreground">
+                            {vehicleStatus.months_since} month{vehicleStatus.months_since !== 1 ? 's' : ''} ago
+                            {vehicleStatus.distance_since != null && (
+                              <span> / {vehicleStatus.distance_since.toLocaleString()} {distUnit} since last service</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : hasDueStatus && dueConfig ? (
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${dueConfig.bg}`}>
@@ -131,7 +174,7 @@ const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpande
                       <p className="text-[10px] text-muted-foreground mt-1">Based on mileage + time</p>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No mileage data provided — enter your odometer reading for a personalized assessment.</p>
+                    <p className="text-sm text-muted-foreground">No service history found for this item.</p>
                   )}
                 </div>
 

@@ -31,7 +31,8 @@ const EstimateDetailPage = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
-  const [drivingMode, setDrivingMode] = useState('normal'); // 'normal' or 'severe'
+  const [drivingMode, setDrivingMode] = useState('normal');
+  const [vehicleStatusMap, setVehicleStatusMap] = useState({});
 
   useEffect(() => { fetchEstimate(); }, [id]);
 
@@ -43,14 +44,24 @@ const EstimateDetailPage = () => {
       ]);
       setData(estRes.data);
       setVehicles(vehRes.data || []);
-      // Sync driving mode with stored schedule
       const sc = estRes.data?.estimate?.schedule_code;
       setDrivingMode(sc === 'SCHEDULE_2' ? 'severe' : 'normal');
+      // Fetch vehicle service history status
+      fetchVehicleStatus();
     } catch {
       toast.error('Failed to load estimate');
       navigate('/estimates');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchVehicleStatus = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/estimates/${id}/vehicle-status`, getAuthHeader());
+      setVehicleStatusMap(res.data?.items || {});
+    } catch {
+      // Silently fail - vehicle status is supplementary
     }
   };
 
@@ -282,6 +293,8 @@ const EstimateDetailPage = () => {
               onToggle={toggleItem}
               isExpanded={expandedItem === item.id}
               onExpand={setExpandedItem}
+              vehicleStatus={vehicleStatusMap[item.id] || null}
+              isGuest={false}
             />
           ))}
         </div>
