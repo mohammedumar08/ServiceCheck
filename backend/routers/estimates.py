@@ -265,7 +265,7 @@ async def guest_reanalyze(estimate_id: str, guest_token: str = Query(...), body:
                 "severity", "default_recommendation_code", "recommendation_text",
                 "user_explanation", "region_code", "schedule_used", "due_status",
                 "interval_value", "interval_unit", "interval_km", "interval_miles",
-                "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
+                "interval_months", "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
                 "schedule_notes", "source_reference", "rule_trace", "normalized_text",
             ] if k in analysis
         }
@@ -617,6 +617,7 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
         last_date_str = best.get("date")
         last_odometer = best.get("odometer")
         interval_value = item.get("interval_value") or item.get("interval_km") or item.get("interval_miles")
+        interval_months = item.get("interval_months")
         interval_unit = item.get("interval_unit", "km")
 
         days_since = None
@@ -646,13 +647,15 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
                 delta = now - last_dt
                 days_since = max(delta.days, 0)
                 months_since = days_since // 30
-                # Time-based status (default 12-month interval)
-                if days_since >= 365:
-                    time_status = "overdue"
-                elif days_since >= 300:
-                    time_status = "due_soon"
-                else:
-                    time_status = "not_due"
+                # Time-based status using manufacturer interval (or skip if unknown)
+                if interval_months:
+                    threshold_days = interval_months * 30
+                    if days_since >= threshold_days:
+                        time_status = "overdue"
+                    elif days_since >= threshold_days * 0.8:
+                        time_status = "due_soon"
+                    else:
+                        time_status = "not_due"
 
         # Calculate distance since last service
         if last_odometer and current_mileage and current_mileage > last_odometer:
@@ -682,6 +685,7 @@ async def get_vehicle_status(estimate_id: str, current_user: dict = Depends(get_
             "distance_since": distance_since,
             "status": status,
             "interval_value": interval_value,
+            "interval_months": interval_months,
             "interval_unit": interval_unit,
         }
 
@@ -734,7 +738,7 @@ async def reanalyze_estimate(
                 "severity", "default_recommendation_code", "recommendation_text",
                 "user_explanation", "region_code", "schedule_used", "due_status",
                 "interval_value", "interval_unit", "interval_km", "interval_miles",
-                "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
+                "interval_months", "miles_remaining", "trigger_type", "severe_only", "maintenance_match",
                 "schedule_notes", "source_reference", "rule_trace", "normalized_text",
             ] if k in analysis
         }
