@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2, HelpCircle, ChevronDown, ChevronUp,
-  ShieldCheck, ShieldQuestion, Clock, FileText
+  ShieldCheck, ShieldQuestion, Clock
 } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
@@ -113,23 +113,27 @@ const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpande
                 )}
 
                 {/* Your Vehicle Status */}
-                {hasDueStatus && dueConfig && (
-                  <div>
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1.5">Your Vehicle Status</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${dueConfig.bg}`}>
-                        <Clock className="h-3.5 w-3.5 mr-1" />
-                        <span className={dueConfig.color}>{dueConfig.label}</span>
-                      </Badge>
-                      {item.miles_remaining != null && (
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {item.miles_remaining.toLocaleString()} {item.interval_unit || distUnit} remaining
-                        </span>
-                      )}
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1.5">Your Vehicle Status</p>
+                  {hasDueStatus && dueConfig ? (
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className={`text-xs rounded-sm px-2 py-0.5 ${dueConfig.bg}`}>
+                          <Clock className="h-3.5 w-3.5 mr-1" />
+                          <span className={dueConfig.color}>{dueConfig.label}</span>
+                        </Badge>
+                        {item.miles_remaining != null && (
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {item.miles_remaining.toLocaleString()} {item.interval_unit || distUnit} remaining
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">Based on mileage + time</p>
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">Based on mileage + time</p>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No mileage data provided — enter your odometer reading for a personalized assessment.</p>
+                  )}
+                </div>
 
                 {/* Match Confidence */}
                 <div>
@@ -138,15 +142,6 @@ const EstimateItemCard = ({ item, idx, distUnit, isSelected, onToggle, isExpande
                     <span className={`inline-block h-2.5 w-2.5 rounded-full ${confLevel.dot}`}></span>
                     <span className={`text-sm font-medium ${confLevel.color}`}>{confLevel.label}</span>
                     <span className="text-xs font-mono text-muted-foreground">({(confidence * 100).toFixed(0)}%)</span>
-                  </div>
-                </div>
-
-                {/* Original Line */}
-                <div>
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1">Original Line (from estimate)</p>
-                  <div className="flex items-start gap-2 rounded-sm bg-muted/30 border border-border/50 px-3 py-2">
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                    <p className="text-sm font-mono text-muted-foreground italic">{item.raw_text}</p>
                   </div>
                 </div>
 
