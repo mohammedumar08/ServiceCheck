@@ -394,5 +394,29 @@
     "description": "Legitimate when a fault, warning light, or symptom exists.",
     "region_scope": "global",
     "is_active": true
+  },
+  {
+    "service_key": "accessory_drive_belt_inspection",
+    "display_name": "Accessory Drive Belt Inspection",
+    "category": "required",
+    "severity": "normal",
+    "default_recommendation_code": "recommended_now",
+    "recommendation_text": "Scheduled inspection item.",
+    "user_explanation": "Accessory drive belt inspection is a manufacturer-scheduled maintenance item to check for wear, cracking, or fraying before failure occurs.",
+    "description": "Manufacturer-scheduled inspection of the accessory drive belt at defined mileage intervals.",
+    "region_scope": "global",
+    "is_active": true
+  },
+  {
+    "service_key": "accessory_drive_belt_replacement",
+    "display_name": "Accessory Drive Belt Replacement",
+    "category": "conditional",
+    "severity": "high",
+    "default_recommendation_code": "maybe_needed",
+    "recommendation_text": "Appropriate at manufacturer-defined mileage or if inspection reveals wear.",
+    "user_explanation": "Accessory drive belt replacement is legitimate when due by mileage or when inspection identifies wear, cracking, or fraying.",
+    "description": "Legitimate at manufacturer-defined milestone mileage or when belt condition warrants replacement.",
+    "region_scope": "global",
+    "is_active": true
   }
 ]
